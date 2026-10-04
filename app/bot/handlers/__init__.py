@@ -14,6 +14,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, TypeHandler, filters
 
 from app.bot.handlers import (
+    admin,
     announcements,
     calendar_events,
     courses,
@@ -51,6 +52,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(links.build_conversation(), group=0)
     app.add_handler(announcements.build_conversation(), group=0)
     app.add_handler(calendar_events.build_conversation(), group=0)
+    app.add_handler(admin.build_conversation(), group=0)
 
     # --- fallback (keep last) -----------------------------------------
     app.add_handler(

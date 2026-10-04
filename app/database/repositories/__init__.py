@@ -11,6 +11,7 @@ from app.database.repositories.reminder_repository import (
     ReminderRepository,
 )
 from app.database.repositories.schedule_repository import WeeklyScheduleRepository
+from app.database.repositories.stats_repository import StatsRepository
 from app.database.repositories.user_repository import UserRepository
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "NotificationLogRepository",
     "ReminderNotificationRepository",
     "ReminderRepository",
+    "StatsRepository",
     "UserRepository",
     "WeeklyScheduleRepository",
 ]
