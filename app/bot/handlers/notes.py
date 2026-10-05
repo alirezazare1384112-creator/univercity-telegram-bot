@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, chat_id, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import NOTES, main_menu_keyboard
+from app.bot.keyboards.main_menu import COURSES, NOTES, main_menu_keyboard
 from app.bot.states.note_states import NoteState
 from app.config import get_settings
 from app.database.database import get_session
@@ -65,23 +65,19 @@ def _extract_file(message) -> tuple[str, str, str | None, str | None] | None:
 
 
 # --- text builders ------------------------------------------------------
-def _list_text(notes: list, course_names: dict[int, str]) -> str:
-    if not notes:
+def _courses_text(courses: list, orphans: int) -> str:
+    if not courses and orphans == 0:
         return (
-            "هنوز جزوه‌ای ذخیره نکرده‌ای.\n\n"
-            f"با دکمه «{ADD_NOTE}» اولین فایلت را اضافه کن."
+            "هنوز درسی و جزوه‌ای ثبت نکرده‌ای.\n\n"
+            f"درس‌ها را از منوی اصلی «{COURSES}» اضافه کن،\n"
+            f"سپس با «{ADD_NOTE}» اولین جزوه را ذخیره کن."
         )
-    tz = get_settings().timezone
-    lines = ["📚 جزوه‌های من", ""]
-    for index, note in enumerate(notes, start=1):
-        icon = "📷" if note.file_type == NOTE_PHOTO else "📄"
-        course = course_names.get(note.course_id or 0)
-        suffix = f" — {course}" if course else ""
-        lines.append(
-            f"{index}) {icon} {note.title}{suffix} "
-            f"({format_jalali(note.created_at, tz)[:10]})"
+    if not courses:
+        return (
+            "📚 جزوه‌های بدون درس\n\n"
+            f"هنوز درسی ثبت نکرده‌ای؛ از منوی اصلی «{COURSES}» درس اضافه کن."
         )
-    return "\n".join(lines)
+    return "📚 جزوه‌های من\n\nکدام درس را باز کنی؟"
 
 
 def _detail_text(note, course_name: str | None) -> str:
@@ -108,7 +104,9 @@ def _text_keyboard(field: str):
     return inline_buttons(rows)
 
 
-def _detail_keyboard(note_id: int):
+def _detail_keyboard(note_id: int, course_id: int | None):
+    back_data = f"note:bycourse:{course_id}" if course_id else "note:list"
+    back_label = "🔙 جزوه‌های همین درس" if course_id else "🔙 جزوه‌ها"
     rows: list[list[tuple[str, str]]] = [
         [
             ("✏️ عنوان", f"note:edit:{note_id}:title"),
@@ -116,7 +114,7 @@ def _detail_keyboard(note_id: int):
         ],
         [("📖 تغییر درس", f"note:edit:{note_id}:course")],
         [("🗑 حذف جزوه", f"note:delete:{note_id}")],
-        [("🔙 لیست جزوه‌ها", "note:list"), ("🔙 منوی اصلی", "note:exit")],
+        [(back_label, back_data), ("🔙 منوی اصلی", "note:exit")],
     ]
     return inline_buttons(rows)
 
@@ -128,21 +126,83 @@ async def _load_courses(user_id: int):
 
 
 async def _show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    context.user_data.pop("note_course", None)
     async with get_session() as session:
         notes = await NoteRepository(session).list_by_user(user_id)
         courses = await CourseRepository(session).list_by_user(user_id)
 
-    course_names = {course.id: course.name for course in courses}
-    rows: list[list[tuple[str, str]]] = [
-        [(("📷 " if n.file_type == NOTE_PHOTO else "📄 ") + n.title, f"note:open:{n.id}")]
-        for n in notes
+    counts: dict[int, int] = {}
+    orphans = 0
+    for note in notes:
+        if note.course_id:
+            counts[note.course_id] = counts.get(note.course_id, 0) + 1
+        else:
+            orphans += 1
+
+    buttons = [
+        (f"📖 {course.name} ({counts.get(course.id, 0)})", f"note:bycourse:{course.id}")
+        for course in courses
     ]
+    rows: list[list[tuple[str, str]]] = [
+        buttons[index : index + 2] for index in range(0, len(buttons), 2)
+    ]
+    if orphans or not courses:
+        rows.append([(f"📂 بدون درس ({orphans})", "note:bycourse:none")])
     rows.append([(ADD_NOTE, "note:add")])
     rows.append([("🔙 منوی اصلی", "note:exit")])
     await answer(
-        update, context, _list_text(notes, course_names), reply_markup=inline_buttons(rows)
+        update,
+        context,
+        _courses_text(courses, orphans),
+        reply_markup=inline_buttons(rows),
     )
     return NoteState.MENU
+
+
+async def _show_course_notes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    course_id: int | None,
+):
+    async with get_session() as session:
+        notes = await NoteRepository(session).list_by_user(user_id)
+        course = None
+        if course_id is not None:
+            course = await CourseRepository(session).get(course_id, user_id)
+
+    if course_id is not None and course is None:
+        await answer(update, context, "این درس پیدا نشد.")
+        return await _show_menu(update, context, user_id)
+
+    context.user_data["note_course"] = course_id
+    scoped = [note for note in notes if (note.course_id or None) == course_id]
+    title = (
+        f"📚 جزوه‌های «{course.name}»" if course is not None else "📚 جزوه‌های بدون درس"
+    )
+
+    rows: list[list[tuple[str, str]]] = []
+    if scoped:
+        lines = [title, ""]
+        for index, note in enumerate(scoped, start=1):
+            icon = "📷" if note.file_type == NOTE_PHOTO else "📄"
+            lines.append(f"{index}) {icon} {note.title}")
+        text = "\n".join(lines)
+        rows = [
+            [
+                (
+                    ("📷 " if note.file_type == NOTE_PHOTO else "📄 ") + note.title,
+                    f"note:open:{note.id}",
+                )
+            ]
+            for note in scoped
+        ]
+    else:
+        text = f"{title}\n\nهنوز جزوه‌ای برای این درس نداری."
+    rows.append([(ADD_NOTE, "note:add")])
+    rows.append([("🔙 همه درس‌ها", "note:list"), ("🔙 منوی اصلی", "note:exit")])
+    await answer(update, context, text, reply_markup=inline_buttons(rows))
+    return NoteState.COURSE
 
 
 async def notes_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,7 +231,7 @@ async def _show_detail(
         return await _show_menu(update, context, user_id)
 
     context.user_data["note_id"] = note_id
-    keyboard = _detail_keyboard(note_id)
+    keyboard = _detail_keyboard(note_id, note.course_id)
     target = chat_id(update)
     try:
         if note.file_type == NOTE_PHOTO:
@@ -211,6 +271,19 @@ async def on_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _show_detail(update, context, user_id, note_id)
 
 
+async def on_open_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """The 📖 course buttons on the courses screen (and the back button)."""
+    query = update.callback_query
+    if query is not None:
+        await query.answer()
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    raw = (query.data or "").split(":")[-1]
+    course_id = None if raw == "none" else int(raw)
+    return await _show_course_notes(update, context, user_id, course_id)
+
+
 # --- wizard -------------------------------------------------------------
 def _next_field(wizard: dict) -> str | None:
     if wizard["mode"] == "edit":
@@ -219,7 +292,11 @@ def _next_field(wizard: dict) -> str | None:
         index = CREATE_FIELDS.index(wizard["field"])
     except ValueError:  # pragma: no cover - defensive
         return None
-    return CREATE_FIELDS[index + 1] if index + 1 < len(CREATE_FIELDS) else None
+    for candidate in CREATE_FIELDS[index + 1 :]:
+        if candidate == "course" and "course" in (wizard.get("data") or {}):
+            continue  # already chosen on the course screen
+        return candidate
+    return None
 
 
 async def _render_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,10 +328,14 @@ async def on_add_clicked(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query is not None:
         await query.answer()
+    data: dict = {}
+    if "note_course" in context.user_data:
+        # started from a course screen: the course is already known
+        data["course"] = context.user_data["note_course"]
     return await _start_wizard(
         update,
         context,
-        {"mode": "create", "note_id": None, "field": "title", "data": {}},
+        {"mode": "create", "note_id": None, "field": "title", "data": data},
     )
 
 
@@ -490,16 +571,20 @@ async def on_delete_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_id is None:
         return ConversationHandler.END
     note_id = int((query.data or "").split(":")[2])
+    course_id: int | None = None
 
     async with get_session() as session:
         note = await NoteRepository(session).get(note_id, user_id)
         deleted = note is not None
         if note is not None:
+            course_id = note.course_id
             await NoteRepository(session).delete(note)
 
     await answer(
         update, context, "✅ جزوه حذف شد." if deleted else "این جزوه پیدا نشد."
     )
+    if deleted and course_id is not None:
+        return await _show_course_notes(update, context, user_id, course_id)
     return await _show_menu(update, context, user_id)
 
 
@@ -545,12 +630,27 @@ def build_conversation() -> ConversationHandler:
         ],
         states={
             NoteState.MENU: [
+                CallbackQueryHandler(
+                    on_open_course, pattern=r"^note:bycourse:(?:\d+|none)$"
+                ),
                 CallbackQueryHandler(on_add_clicked, pattern=r"^note:add$"),
+                CallbackQueryHandler(exit_conversation, pattern=r"^note:exit$"),
+                MessageHandler(filters.Text([NOTES]), notes_menu),
+            ],
+            NoteState.COURSE: [
+                CallbackQueryHandler(
+                    on_open_course, pattern=r"^note:bycourse:(?:\d+|none)$"
+                ),
                 CallbackQueryHandler(on_open, pattern=r"^note:open:\d+$"),
+                CallbackQueryHandler(on_add_clicked, pattern=r"^note:add$"),
+                CallbackQueryHandler(notes_menu, pattern=r"^note:list$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^note:exit$"),
                 MessageHandler(filters.Text([NOTES]), notes_menu),
             ],
             NoteState.DETAIL: [
+                CallbackQueryHandler(
+                    on_open_course, pattern=r"^note:bycourse:(?:\d+|none)$"
+                ),
                 CallbackQueryHandler(on_edit_clicked, pattern=r"^note:edit:\d+:\w+$"),
                 CallbackQueryHandler(on_delete_confirmed, pattern=r"^note:delete:\d+:yes$"),
                 CallbackQueryHandler(on_delete_cancelled, pattern=r"^note:delete:no$"),

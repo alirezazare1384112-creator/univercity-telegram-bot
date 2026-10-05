@@ -18,6 +18,7 @@ from app.bot.handlers.notes import (
     on_file_received,
     on_free_file,
     on_open,
+    on_open_course,
     on_skip_clicked,
     on_wizard_text,
 )
@@ -89,11 +90,11 @@ async def test_empty_menu_invites_the_student(db):
     state = await notes_menu(make_text_update(NOTES, user_id=7001), context)
 
     assert state == NoteState.MENU
-    assert "هنوز جزوه‌ای ذخیره نکرده‌ای" in context.sent_texts[-1]
+    assert "هنوز درسی و جزوه‌ای" in context.sent_texts[-1]
     assert "➕ جزوه جدید" in str(context.last_markup)
 
 
-async def test_list_shows_saved_notes(db):
+async def test_saved_notes_appear_under_their_bucket(db):
     context = await _register(7002)
     await _create_note(context, 7002, title="حل تمرین ۱")
 
@@ -101,7 +102,97 @@ async def test_list_shows_saved_notes(db):
     state = await notes_menu(make_text_update(NOTES, user_id=7002), context)
 
     assert state == NoteState.MENU
+    assert "بدون درس (1)" in str(context.last_markup)
+
+    state = await on_open_course(
+        make_callback_update("note:bycourse:none", user_id=7002), context
+    )
+    assert state == NoteState.COURSE
     assert "حل تمرین ۱" in context.sent_texts[-1]
+
+
+async def test_menu_groups_notes_by_course(db):
+    context = await _register(7020)
+    course_a = await _create_course(context, 7020, "ریاضی")
+    course_b = await _create_course(context, 7020, "فیزیک")
+    note_a = await _create_note(context, 7020, title="حل تمرین ریاضی")
+    note_b = await _create_note(context, 7020, title="جزوه فیزیک")
+    user_id = context.user_data["user_id"]
+    async with get_session() as session:
+        repo = NoteRepository(session)
+        await repo.update(await repo.get(note_a, user_id), course_id=course_a)
+        await repo.update(await repo.get(note_b, user_id), course_id=course_b)
+
+    context.bot.send_message.reset_mock()
+    state = await notes_menu(make_text_update(NOTES, user_id=7020), context)
+
+    assert state == NoteState.MENU
+    markup = str(context.last_markup)
+    assert "ریاضی (1)" in markup and "فیزیک (1)" in markup
+    assert "حل تمرین ریاضی" not in markup  # the flat list is gone
+
+    state = await on_open_course(
+        make_callback_update(f"note:bycourse:{course_a}", user_id=7020), context
+    )
+    assert state == NoteState.COURSE
+    assert "جزوه‌های «ریاضی»" in context.sent_texts[-1]
+    assert "حل تمرین ریاضی" in context.sent_texts[-1]
+    assert "جزوه فیزیک" not in context.sent_texts[-1]
+
+
+async def test_add_from_a_course_screen_skips_the_course_step(db):
+    context = await _register(7021)
+    course_id = await _create_course(context, 7021, "آمار")
+
+    await notes_menu(make_text_update(NOTES, user_id=7021), context)
+    await on_open_course(
+        make_callback_update(f"note:bycourse:{course_id}", user_id=7021), context
+    )
+    await on_add_clicked(make_callback_update("note:add", user_id=7021), context)
+    await on_wizard_text(make_text_update("نرمال‌سازی", user_id=7021), context)
+    await on_file_received(make_photo_update(user_id=7021), context)
+
+    assert "توضیح" in context.sent_texts[-1]  # went straight to description
+    assert not any(
+        "این جزوه به کدام درس" in text for text in context.sent_texts
+    )  # the course step never showed up
+
+    await on_skip_clicked(make_callback_update("note:skip", user_id=7021), context)
+    user_id = context.user_data["user_id"]
+    async with get_session() as session:
+        notes = await NoteRepository(session).list_by_user(user_id)
+    assert notes[0].course_id == course_id
+
+
+async def test_a_student_cannot_open_another_students_course(db):
+    context_a = await _register(7025)
+    course_a = await _create_course(context_a, 7025, "شیمی")
+    context_b = await _register(7026)
+
+    await notes_menu(make_text_update(NOTES, user_id=7026), context_b)
+    state = await on_open_course(
+        make_callback_update(f"note:bycourse:{course_a}", user_id=7026), context_b
+    )
+
+    assert state == NoteState.MENU
+    assert any("پیدا نشد" in text for text in context_b.sent_texts)
+
+
+async def test_detail_offers_a_back_button_to_its_course(db):
+    context = await _register(7027)
+    course_id = await _create_course(context, 7027, "ریاضی")
+    note_id = await _create_note(context, 7027, title="جزوه ریاضی")
+    user_id = context.user_data["user_id"]
+    async with get_session() as session:
+        repo = NoteRepository(session)
+        await repo.update(await repo.get(note_id, user_id), course_id=course_id)
+
+    context.bot.send_photo.reset_mock()
+    await on_open(make_callback_update(f"note:open:{note_id}", user_id=7027), context)
+
+    markup = context.bot.send_photo.call_args.kwargs.get("reply_markup")
+    assert markup is not None
+    assert f"note:bycourse:{course_id}" in str(markup)
 
 
 # --- creation -----------------------------------------------------------
@@ -324,10 +415,11 @@ async def test_deleting_a_user_removes_his_notes(session):
     assert await NoteRepository(session).count(user.id) == 0
 
 
-def test_conversation_covers_the_three_states():
+def test_conversation_covers_all_states():
     handler = build_conversation()
     assert set(handler.states) == {
         NoteState.MENU,
+        NoteState.COURSE,
         NoteState.DETAIL,
         NoteState.WIZARD,
     }

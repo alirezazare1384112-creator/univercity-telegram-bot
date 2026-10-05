@@ -18,8 +18,7 @@ htmlcov/
 # Project runtime data
 data/*.db
 data/*.db-*
-logs/*.log
-logs/*.log.*
+logs/
 
 # IDE / OS
 .idea/

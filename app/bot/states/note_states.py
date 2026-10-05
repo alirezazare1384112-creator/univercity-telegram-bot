@@ -9,5 +9,6 @@ class NoteState(Enum):
     """📚 جزوه‌ها"""
 
     MENU = "notes_menu"
+    COURSE = "notes_course"
     DETAIL = "notes_detail"
     WIZARD = "notes_wizard"

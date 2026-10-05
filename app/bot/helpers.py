@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 
 from app.config import get_settings
@@ -26,7 +26,7 @@ async def answer(
     context: ContextTypes.DEFAULT_TYPE,
     text: str,
     *,
-    reply_markup: ReplyKeyboardMarkup | InlineKeyboardMarkup | None = None,
+    reply_markup: ReplyKeyboardMarkup | InlineKeyboardMarkup | ReplyKeyboardRemove | None = None,
 ) -> None:
     """Send a plain text reply.
 

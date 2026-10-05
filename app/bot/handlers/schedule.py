@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Message, Update
+from telegram import Message, ReplyKeyboardRemove, Update
 from telegram.error import TelegramError
 from telegram.ext import (
     CallbackQueryHandler,
@@ -51,7 +51,9 @@ async def _load_schedule(user_id: int):
         return await WeeklyScheduleRepository(session).get_active(user_id)
 
 
-async def _send_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, schedule) -> bool:
+async def _send_schedule(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, schedule, reply_markup=None
+) -> bool:
     """Resend the stored schedule. Returns False when Telegram rejects it."""
     target = chat_id(update)
     if target is None:
@@ -62,12 +64,14 @@ async def _send_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, sch
                 chat_id=target,
                 document=schedule.telegram_file_id,
                 caption=schedule.caption,
+                reply_markup=reply_markup,
             )
         else:
             await context.bot.send_photo(
                 chat_id=target,
                 photo=schedule.telegram_file_id,
                 caption=schedule.caption,
+                reply_markup=reply_markup,
             )
         return True
     except TelegramError:
@@ -77,24 +81,21 @@ async def _send_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, sch
 
 async def _show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
     schedule = await _load_schedule(user_id)
+    keyboard = _view_keyboard(has_schedule=schedule is not None)
 
     if schedule is None:
+        await answer(update, context, NO_SCHEDULE_TEXT, reply_markup=keyboard)
+        return ScheduleState.WAITING_PHOTO
+
+    # the buttons ride on the photo itself - one message instead of two
+    sent = await _send_schedule(update, context, schedule, reply_markup=keyboard)
+    if not sent:
         await answer(
             update,
             context,
-            NO_SCHEDULE_TEXT,
-            reply_markup=_view_keyboard(has_schedule=False),
+            "⚠️ برنامه ثبت شده بود اما ارسال آن ممکن نشد.",
+            reply_markup=keyboard,
         )
-        return ScheduleState.WAITING_PHOTO
-
-    sent = await _send_schedule(update, context, schedule)
-    header = "📅 برنامه هفتگی تو:" if sent else "⚠️ برنامه ثبت شده بود اما ارسال آن ممکن نشد."
-    await answer(
-        update,
-        context,
-        header,
-        reply_markup=_view_keyboard(has_schedule=True),
-    )
     return ScheduleState.MENU
 
 
@@ -150,7 +151,12 @@ async def on_photo_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     context.user_data.pop("schedule_awaiting", None)
-    await answer(update, context, "✅ برنامه هفتگی با موفقیت ذخیره شد.")
+    await answer(
+        update,
+        context,
+        "✅ برنامه هفتگی با موفقیت ذخیره شد.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
     return await _show_menu(update, context, user_id)
 
 
@@ -160,7 +166,9 @@ async def on_text_while_waiting(update: Update, context: ContextTypes.DEFAULT_TY
         user_id = await current_user_id(update, context)
         if user_id is None:
             return ConversationHandler.END
-        await answer(update, context, "ارسال عکس لغو شد.")
+        await answer(
+            update, context, "ارسال عکس لغو شد.", reply_markup=ReplyKeyboardRemove()
+        )
         return await _show_menu(update, context, user_id)
     await answer(
         update,
@@ -231,7 +239,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 def build_conversation() -> ConversationHandler:
-    photo_filter = filters.PHOTO | filters.Document.IMAGE
+    photo_filter = filters.PHOTO | filters.Document.ALL
     return ConversationHandler(
         entry_points=[
             MessageHandler(filters.Text([SCHEDULE]), schedule_menu),
@@ -248,11 +256,14 @@ def build_conversation() -> ConversationHandler:
                     on_delete_cancelled, pattern=r"^schedule:delete:no$"
                 ),
                 CallbackQueryHandler(exit_schedule, pattern=r"^schedule:exit$"),
+                # a photo/document sent while browsing replaces the schedule
+                MessageHandler(photo_filter, on_photo_received),
                 MessageHandler(filters.Text([SCHEDULE]), schedule_menu),
             ],
             ScheduleState.WAITING_PHOTO: [
                 MessageHandler(photo_filter, on_photo_received),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, on_text_while_waiting),
+                CallbackQueryHandler(on_add_clicked, pattern=r"^schedule:add$"),
                 CallbackQueryHandler(
                     on_delete_confirmed, pattern=r"^schedule:delete:yes$"
                 ),

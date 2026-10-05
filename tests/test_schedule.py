@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from telegram.ext import MessageHandler
 
 from app.bot.handlers.schedule import (
+    build_conversation,
     on_add_clicked,
     on_delete_cancelled,
     on_delete_clicked,
@@ -113,6 +115,58 @@ async def test_plain_text_while_waiting_shows_a_hint(db):
 
     assert state == ScheduleState.WAITING_PHOTO
     assert "عکس" in context.sent_texts[-1]
+
+
+async def test_add_button_while_awaiting_reprompts(db):
+    """The empty-state button must never be a dead end."""
+    context = await _register(3010)
+    await schedule_menu(make_text_update(SCHEDULE, user_id=3010), context)
+
+    state = await on_add_clicked(
+        make_callback_update("schedule:add", user_id=3010), context
+    )
+
+    assert state == ScheduleState.WAITING_PHOTO
+    assert "عکس برنامه" in context.sent_texts[-1]
+
+
+async def test_photo_sent_from_the_menu_replaces_the_schedule(db):
+    context = await _register(3011)
+    await schedule_menu(make_text_update(SCHEDULE, user_id=3011), context)
+    await on_photo_received(make_photo_update(file_id="OLD", user_id=3011), context)
+
+    state = await on_photo_received(
+        make_photo_update(file_id="NEW", user_id=3011), context
+    )
+    assert state == ScheduleState.MENU
+
+    async with get_session() as session:
+        user = await UserRepository(session).get_by_telegram_id(3011)
+        schedule = await WeeklyScheduleRepository(session).get_active(user.id)
+    assert schedule.telegram_file_id == "NEW"
+
+
+def test_wiring_keeps_every_schedule_button_alive():
+    """The empty-state button and stray files must never go unanswered."""
+    handler = build_conversation()
+
+    def patterns(state):
+        return [
+            item.pattern.pattern
+            for item in handler.states[state]
+            if getattr(item, "pattern", None) is not None
+        ]
+
+    assert r"^schedule:add$" in patterns(ScheduleState.WAITING_PHOTO)
+
+    photo = make_photo_update(user_id=1)
+    pdf = make_document_update(user_id=1, mime_type="application/pdf")
+    for state in (ScheduleState.MENU, ScheduleState.WAITING_PHOTO):
+        for update in (photo, pdf):
+            assert any(
+                isinstance(item, MessageHandler) and item.filters.check_update(update)
+                for item in handler.states[state]
+            ), f"{state} must accept files"
 
 
 async def test_cancel_stops_the_upload(db):
