@@ -398,7 +398,10 @@ async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
     context.user_data.pop("course_wizard", None)
+    context.user_data.pop("course_id", None)
     await answer(update, context, "عملیات لغو شد.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
@@ -436,6 +439,7 @@ def build_conversation() -> ConversationHandler:
         fallbacks=[
             CommandHandler(["start", "cancel"], cancel_conversation),
             MessageHandler(filters.Text([BACK]), cancel_conversation),
+            CallbackQueryHandler(cancel_conversation, pattern=r"^course:cancel$"),
         ],
         name="course_conversation",
         persistent=False,

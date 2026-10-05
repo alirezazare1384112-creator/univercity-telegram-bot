@@ -6,6 +6,7 @@ accepted as well and are stored there on the first ``/admin`` (bootstrap).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram import InlineKeyboardMarkup, Update
@@ -43,6 +44,10 @@ BROADCAST_PROMPT = (
 SYNC_DISABLED = "همگام‌سازی ایتا تنظیم نشده است (EITAA_SYNC_URLS خالی است)."
 CLOSED_TEXT = "پنل ادمین بسته شد."
 USERS_LIMIT = 10
+# Broadcast throttling: stay well below Telegram's ~30 messages/second
+# limit, otherwise a big user list trips the flood control.
+BROADCAST_BATCH_SIZE = 25
+BROADCAST_BATCH_PAUSE_SECONDS = 1.0
 
 
 def _panel_keyboard() -> InlineKeyboardMarkup:
@@ -153,14 +158,20 @@ async def on_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ids = await UserRepository(session).list_active_telegram_ids()
     sent = 0
     failed = 0
-    for telegram_id in ids:
+    for index, telegram_id in enumerate(ids, start=1):
         try:
             await context.bot.send_message(
                 chat_id=telegram_id, text=text, disable_web_page_preview=True
             )
             sent += 1
-        except Exception:  # noqa: BLE001 - blocked users must not stop the loop
+        except Exception as exc:  # noqa: BLE001 - blocked users must not stop the loop
             failed += 1
+            logger.warning(
+                "Broadcast to %s failed (%s)", telegram_id, type(exc).__name__
+            )
+        # throttle: pause between batches instead of hammering the API
+        if index % BROADCAST_BATCH_SIZE == 0:
+            await asyncio.sleep(BROADCAST_BATCH_PAUSE_SECONDS)
     logger.info(
         "Broadcast by admin %s: sent=%s failed=%s",
         getattr(user, "id", "?"),

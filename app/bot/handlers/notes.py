@@ -426,7 +426,19 @@ async def on_course_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     value = (query.data or "").split(":")[-1]
-    wizard.setdefault("data", {})["course"] = None if value == "none" else int(value)
+    if value == "none":
+        course_id: int | None = None
+    else:
+        course_id = int(value)
+        # callback_data comes from the client: a note may only be linked to
+        # a course that really belongs to the sender.
+        async with get_session() as session:
+            owned = await CourseRepository(session).get(course_id, user_id)
+        if owned is None:
+            await answer(update, context, "این درس پیدا نشد.")
+            return await _render_field(update, context)
+
+    wizard.setdefault("data", {})["course"] = course_id
     context.user_data["note_wizard"] = wizard
     if wizard["mode"] == "edit":
         return await _finish(update, context)
@@ -514,7 +526,10 @@ async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
     context.user_data.pop("note_wizard", None)
+    context.user_data.pop("note_id", None)
     await answer(update, context, "عملیات لغو شد.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 

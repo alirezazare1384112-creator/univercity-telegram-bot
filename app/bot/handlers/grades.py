@@ -239,7 +239,20 @@ async def on_add_clicked(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query is not None:
         await query.answer()
+    user_id = await current_user_id(update, context)
+    if query is None or user_id is None:
+        return ConversationHandler.END
+
     course_id = int((query.data or "").split(":")[-1])
+    # callback_data comes from the client: only accept the id when the
+    # course really belongs to the sender (a forwarded/copied button must
+    # not be able to write a mark into another student's course).
+    async with get_session() as session:
+        course = await CourseRepository(session).get(course_id, user_id)
+    if course is None:
+        await answer(update, context, "این درس پیدا نشد.")
+        return await _show_courses(update, context, user_id)
+
     context.user_data["grade_course_id"] = course_id
     context.user_data["grade_wizard"] = {
         "mode": "create",
@@ -280,16 +293,24 @@ def _next_field(wizard: dict) -> str | None:
 
 
 async def _current_item(wizard: dict):
+    item_id = wizard.get("item_id")
+    course_id = wizard.get("course_id")
+    if item_id is None or course_id is None:  # stale / expired button
+        return None
     async with get_session() as session:
-        return await GradeItemRepository(session).get(
-            int(wizard["item_id"]), int(wizard["course_id"])
-        )
+        return await GradeItemRepository(session).get(int(item_id), int(course_id))
 
 
 async def _finish(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
     wizard = context.user_data.pop("grade_wizard", None) or {}
     data = dict(wizard.get("data") or {})
-    course_id = int(wizard["course_id"])
+    course_id = wizard.get("course_id")
+    if course_id is None:  # the selection was cleared (e.g. /cancel)
+        await answer(
+            update, context, "این عملیات منقضی شده است. دوباره از منوی نمرات شروع کن."
+        )
+        return await _show_courses(update, context, user_id)
+    course_id = int(course_id)
 
     async with get_session() as session:
         repo = GradeItemRepository(session)
@@ -398,7 +419,13 @@ async def on_delete_confirmed(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_id is None:
         return ConversationHandler.END
     item_id = int((query.data or "").split(":")[2])
-    course_id = int(context.user_data.get("grade_course_id"))
+    course_id_raw = context.user_data.get("grade_course_id")
+    if course_id_raw is None:  # stale button from an ended conversation
+        await answer(
+            update, context, "این عملیات منقضی شده است. دوباره از منوی نمرات شروع کن."
+        )
+        return ConversationHandler.END
+    course_id = int(course_id_raw)
 
     async with get_session() as session:
         repo = GradeItemRepository(session)
@@ -445,7 +472,11 @@ async def exit_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
     context.user_data.pop("grade_wizard", None)
+    context.user_data.pop("grade_course_id", None)
+    context.user_data.pop("grade_item_id", None)
     await answer(update, context, "عملیات لغو شد.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
@@ -486,6 +517,7 @@ def build_conversation() -> ConversationHandler:
         fallbacks=[
             CommandHandler(["start", "cancel"], cancel_conversation),
             MessageHandler(filters.Text([BACK]), cancel_conversation),
+            CallbackQueryHandler(cancel_conversation, pattern=r"^grades:cancel$"),
         ],
         name="grades_conversation",
         persistent=False,

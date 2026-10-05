@@ -510,6 +510,12 @@ async def exit_conversation(
 async def cancel_conversation(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
+    # clear the whole wizard, including the chosen source: a cancelled
+    # "add" must not start the next one in Eitaa mode by accident
+    context.user_data.pop("ann_source", None)
+    context.user_data.pop("announcement_id", None)
     await answer(update, context, "عملیات لغو شد.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
