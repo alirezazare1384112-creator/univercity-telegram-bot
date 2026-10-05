@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import reset_settings_cache
 from app.database.database import build_engine
 from app.database.models import Base
 
@@ -69,6 +70,25 @@ def no_real_telegram_calls(monkeypatch):
     for name in ("answer", "edit_message_text", "edit_message_reply_markup", "delete"):
         if hasattr(telegram.CallbackQuery, name):
             monkeypatch.setattr(telegram.CallbackQuery, name, _noop, raising=True)
+
+
+@pytest.fixture(autouse=True)
+def deterministic_settings(monkeypatch):
+    """Pin every setting a test may read.
+
+    CI runs without a ``.env`` file, so anything read from the environment
+    (GPA url, admin ids, sync channels, timezone, database url) must have
+    the same value on every machine.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./data/bot.db")
+    monkeypatch.setenv("GPA_CALCULATOR_URL", "https://example.com/gpa")
+    monkeypatch.setenv("ADMIN_IDS", "")
+    monkeypatch.setenv("EITAA_SYNC_URLS", "")
+    monkeypatch.setenv("EITAA_SYNC_SECONDS", "300")
+    monkeypatch.setenv("TIMEZONE", "Asia/Tehran")
+    reset_settings_cache()
+    yield
+    reset_settings_cache()
 
 
 @pytest.fixture

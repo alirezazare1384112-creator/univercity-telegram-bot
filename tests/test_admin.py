@@ -19,6 +19,7 @@ from app.bot.handlers.admin import (
 )
 from app.bot.middlewares import capture_user
 from app.bot.states.admin_states import AdminState
+from app.config import reset_settings_cache
 from app.database.database import get_session
 from app.database.repositories import AdminRepository
 from tests.helpers import FakeContext, make_callback_update, make_text_update
@@ -126,6 +127,8 @@ async def test_broadcast_reaches_every_active_user(db):
 
 
 async def test_sync_reports_the_imported_count(db, monkeypatch):
+    monkeypatch.setenv("EITAA_SYNC_URLS", "https://eitaa.com/example")
+    reset_settings_cache()
     await _make_admin(ADMIN_ID)
     context = await _register(ADMIN_ID)
     monkeypatch.setattr(admin_module, "sync_channels", AsyncMock(return_value=3))
@@ -134,6 +137,16 @@ async def test_sync_reports_the_imported_count(db, monkeypatch):
 
     assert state == AdminState.MENU
     assert "3 اطلاعیه" in context.sent_texts[-1]
+
+
+async def test_sync_disabled_shows_a_hint(db):
+    await _make_admin(ADMIN_ID)
+    context = await _register(ADMIN_ID)
+
+    state = await on_sync(make_callback_update("adm:sync", user_id=ADMIN_ID), context)
+
+    assert state == AdminState.MENU
+    assert admin_module.SYNC_DISABLED in context.sent_texts[-1]
 
 
 async def test_callback_from_a_stranger_is_rejected(db):
