@@ -1,5 +1,7 @@
 # 🎓 ربات دستیار دانشجو (Student Assistant Bot)
 
+[![CI](https://github.com/alirezazare1384112-creator/univercity-telegram-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/alirezazare1384112-creator/univercity-telegram-bot/actions/workflows/ci.yml)
+
 ربات تلگرامی برای دانشجوها: برنامه هفتگی، درس‌ها، نمرات، معدل و یادآوری — با
 **Python 3.13 + python-telegram-bot v22 + SQLAlchemy 2 (async) + Alembic**.
 
@@ -332,6 +334,10 @@ py -3.13 -m ruff check .           # lint (importها، کد بلااستفاد�
 با تلگرام ندارند و هر تست دیتابیس خودش را دارد. تعداد فعلی: **۲۰۸ تست**.
 پیکربندی lint در `ruff.toml` است.
 
+در گیت‌هاب هم با هر `push` گردش کار `CI` (فایل `.github/workflows/ci.yml`)
+اجرا می‌شود: ruff → alembic → تست‌ها → `run.py --check`؛ وضعیت آن با آیکون
+بالای همین صفحه مشخص است.
+
 ---
 
 ## ۸. استقرار (Deploy)
@@ -419,6 +425,7 @@ journalctl -u student-bot -f        # مشاهدهٔ لاگ
 * [x] 🛠 پنل ادمین (فقط `ADMIN_IDS`: آمار، کاربران، ارسال همگگانی، همگام‌سازی ایتا)
 * [x] ۲۰۸ تست خودکار (بدون شبکه) + `run.py --check` — شامل تست‌های
   جداسازی دادهٔ دانشجوها (IDOR)، سفر کامل کاربر (End-to-End) و ری‌استارت
+* [x] CI روی گیت‌هاب (GitHub Actions با هر push: ruff + alembic + تست‌ها)
 
 ## ۱۱. قابلیت‌های نیازمند API / سرویس خارجی
 
