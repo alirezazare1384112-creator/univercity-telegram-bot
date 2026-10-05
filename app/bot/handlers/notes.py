@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, chat_id, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import COURSES, NOTES, main_menu_keyboard
+from app.bot.keyboards.main_menu import COURSES, NOTES, main_menu_keyboard, menu_buttons_filter
 from app.bot.states.note_states import NoteState
 from app.config import get_settings
 from app.database.database import get_session
@@ -665,7 +665,7 @@ def build_conversation() -> ConversationHandler:
                 CallbackQueryHandler(notes_menu, pattern=r"^note:list$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^note:exit$"),
                 MessageHandler(file_filter & ~filters.COMMAND, on_file_received),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_wizard_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_wizard_text),
             ],
         },
         fallbacks=[

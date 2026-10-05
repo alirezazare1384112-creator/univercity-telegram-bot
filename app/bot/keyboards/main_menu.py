@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from telegram import ReplyKeyboardMarkup
+from telegram.ext import filters
 
 from app.bot.keyboards.common import reply_keyboard
 
@@ -32,6 +33,11 @@ MENU_LABELS: tuple[str, ...] = (
     LINKS,
     PROFILE,
 )
+
+
+def menu_buttons_filter() -> filters.Filter:
+    """Main-menu labels as a text filter - steps subtract it so any menu button always opens its own feature."""
+    return filters.Text(list(MENU_LABELS))
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:

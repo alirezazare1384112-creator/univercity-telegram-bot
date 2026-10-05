@@ -20,7 +20,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import CALENDAR, main_menu_keyboard
+from app.bot.keyboards.main_menu import CALENDAR, main_menu_keyboard, menu_buttons_filter
 from app.bot.states.calendar_states import CalendarState
 from app.config import get_settings
 from app.database.database import get_session
@@ -584,7 +584,7 @@ def build_conversation() -> ConversationHandler:
                 CallbackQueryHandler(on_skip_clicked, pattern=r"^cal:skip$"),
                 CallbackQueryHandler(calendar_menu, pattern=r"^cal:list$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^cal:exit$"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_wizard_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_wizard_text),
             ],
         },
         fallbacks=[

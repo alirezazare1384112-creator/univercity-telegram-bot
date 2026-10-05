@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import COURSES, main_menu_keyboard
+from app.bot.keyboards.main_menu import COURSES, main_menu_keyboard, menu_buttons_filter
 from app.bot.states.course_states import CourseState
 from app.database.database import get_session
 from app.database.repositories import CourseRepository
@@ -422,7 +422,7 @@ def build_conversation() -> ConversationHandler:
             CourseState.WIZARD: [
                 CallbackQueryHandler(on_skip_clicked, pattern=r"^course:skip$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^course:exit$"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_wizard_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_wizard_text),
             ],
             CourseState.DETAIL: [
                 CallbackQueryHandler(on_edit_clicked, pattern=r"^course:edit:\d+:\w+$"),

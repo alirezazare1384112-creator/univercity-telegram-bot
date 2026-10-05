@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons, reply_keyboard
-from app.bot.keyboards.main_menu import PROFILE, main_menu_keyboard
+from app.bot.keyboards.main_menu import PROFILE, main_menu_keyboard, menu_buttons_filter
 from app.bot.states.profile_states import ProfileState
 from app.database.database import get_session
 from app.database.repositories import UserRepository
@@ -175,7 +175,7 @@ def build_conversation() -> ConversationHandler:
                 MessageHandler(filters.Text([PROFILE]), show_profile),
             ],
             ProfileState.ENTERING_VALUE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_value_received),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_value_received),
             ],
         },
         fallbacks=[

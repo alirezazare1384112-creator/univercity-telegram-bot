@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import REMINDERS, main_menu_keyboard
+from app.bot.keyboards.main_menu import REMINDERS, main_menu_keyboard, menu_buttons_filter
 from app.bot.states.reminder_states import ReminderState
 from app.config import get_settings
 from app.database.database import get_session
@@ -618,7 +618,7 @@ def build_conversation() -> ConversationHandler:
                 CallbackQueryHandler(on_skip_clicked, pattern=r"^rem:skip$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^rem:exit$"),
                 MessageHandler(filters.Text([REMINDERS]), reminders_menu),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_wizard_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_wizard_text),
             ],
         },
         fallbacks=[

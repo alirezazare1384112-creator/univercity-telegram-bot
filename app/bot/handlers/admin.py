@@ -21,7 +21,7 @@ from telegram.ext import (
 
 from app.bot.helpers import answer
 from app.bot.keyboards.common import inline_buttons
-from app.bot.keyboards.main_menu import main_menu_keyboard
+from app.bot.keyboards.main_menu import main_menu_keyboard, menu_buttons_filter
 from app.bot.states.admin_states import AdminState
 from app.config import get_settings
 from app.database.database import get_session
@@ -226,7 +226,7 @@ def build_conversation() -> ConversationHandler:
             ],
             AdminState.WAITING: [
                 CommandHandler(["admin", "cancel"], cmd_admin),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_broadcast_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_broadcast_text),
             ],
         },
         fallbacks=[CommandHandler(["start", "cancel"], close_panel)],

@@ -32,7 +32,12 @@ from telegram.ext import (
 
 from app.bot.helpers import answer, chat_id, current_user_id
 from app.bot.keyboards.common import BACK, CANCEL, inline_buttons
-from app.bot.keyboards.main_menu import ANNOUNCEMENTS, MENU_LABELS, main_menu_keyboard
+from app.bot.keyboards.main_menu import (
+    ANNOUNCEMENTS,
+    MENU_LABELS,
+    main_menu_keyboard,
+    menu_buttons_filter,
+)
 from app.bot.states.announcement_states import AnnouncementState
 from app.config import get_settings
 from app.database.database import get_session
@@ -542,7 +547,7 @@ def build_conversation() -> ConversationHandler:
                 # pressing another menu label stops the wait (navigation wins)
                 MessageHandler(filters.Text([ANNOUNCEMENTS]), announcements_menu),
                 MessageHandler(file_filter & ~filters.COMMAND, on_post_file),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, on_post_text),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_post_text),
             ],
             AnnouncementState.DETAIL: [
                 CallbackQueryHandler(on_delete_confirmed, pattern=r"^ann:delete:\d+:yes$"),
