@@ -6,13 +6,27 @@ touch the development database in ``data/``.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+from urllib.parse import urlencode
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config import reset_settings_cache
+from app.config import get_settings, reset_settings_cache
 from app.database.database import build_engine
 from app.database.models import Base
+
+
+def sign_init_data(fields: dict[str, str], *, bot_token: str | None = None) -> str:
+    """Build a valid Telegram initData query string for tests."""
+    token = get_settings().bot_token if bot_token is None else bot_token
+    pairs = sorted(fields.items())
+    data_check_string = "\n".join(f"{key}={value}" for key, value in pairs)
+    secret_key = hmac.new(token.encode(), b"WebAppData", hashlib.sha256).digest()
+    signature = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    return urlencode([*pairs, ("hash", signature)])
 
 
 @pytest_asyncio.fixture
@@ -86,6 +100,11 @@ def deterministic_settings(monkeypatch):
     monkeypatch.setenv("EITAA_SYNC_URLS", "")
     monkeypatch.setenv("EITAA_SYNC_SECONDS", "300")
     monkeypatch.setenv("TIMEZONE", "Asia/Tehran")
+    monkeypatch.setenv("BOT_TOKEN", "123456:TEST-TOKEN")
+    monkeypatch.setenv("WEBAPP_URL", "")
+    monkeypatch.setenv("API_HOST", "127.0.0.1")
+    monkeypatch.setenv("API_PORT", "8000")
+    monkeypatch.setenv("WEBAPP_AUTH_MAX_AGE", "86400")
     reset_settings_cache()
     yield
     reset_settings_cache()
@@ -94,3 +113,15 @@ def deterministic_settings(monkeypatch):
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest_asyncio.fixture
+async def api_client(db):
+    """httpx client wired to the Mini App API (test database via ``db``)."""
+    import httpx
+
+    from app.api import create_api
+
+    transport = httpx.ASGITransport(app=create_api(None))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client

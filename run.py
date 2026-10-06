@@ -1,7 +1,8 @@
 """Project entry point.
 
 Usage:
-    python run.py            # start the Telegram bot (needs BOT_TOKEN)
+    python run.py            # start the bot + Mini App API (needs BOT_TOKEN)
+    python run.py --bot      # start only the Telegram bot (no HTTP API)
     python run.py --check    # local environment check, no Telegram needed
 """
 
@@ -17,9 +18,12 @@ def main() -> int:
 
         return asyncio.run(healthcheck())
 
-    from app.main import run_bot
+    from app.main import run_bot, run_services
 
-    run_bot()
+    if "--bot" in sys.argv:
+        run_bot()
+    else:
+        run_services()
     return 0
 
 

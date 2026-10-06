@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram.ext import Application
@@ -121,7 +122,7 @@ async def healthcheck() -> int:
 
 
 def run_bot() -> None:
-    """Start long polling (production entry point)."""
+    """Start long polling only (bot without the Mini App API)."""
     settings = get_settings()
     setup_logging(settings)
     _validate_token(settings)
@@ -133,6 +134,46 @@ def run_bot() -> None:
         drop_pending_updates=True,
         close_loop=False,
     )
+
+
+async def _serve(settings: Settings) -> None:
+    """Run PTB long polling and the FastAPI server in one event loop."""
+    import uvicorn
+
+    from app.api import create_api
+
+    logger.info(
+        "Starting bot + Mini App API on http://%s:%s",
+        settings.api_host,
+        settings.api_port,
+    )
+    application = build_application()
+    await application.initialize()
+    await application.updater.start_polling(drop_pending_updates=True)
+    await application.start()
+
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_api(application),
+            host=settings.api_host,
+            port=settings.api_port,
+            log_level=settings.log_level.lower(),
+        )
+    )
+    try:
+        await server.serve()
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+
+
+def run_services() -> None:
+    """Production entry point: Telegram bot + Mini App API together."""
+    settings = get_settings()
+    setup_logging(settings)
+    _validate_token(settings)
+    asyncio.run(_serve(settings))
 
 
 if __name__ == "__main__":  # pragma: no cover

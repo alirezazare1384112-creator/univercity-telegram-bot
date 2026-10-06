@@ -99,6 +99,10 @@ class Settings:
     base_dir: Path = field(default=BASE_DIR)
     eitaa_sync_urls: tuple[str, ...] = ()
     eitaa_sync_seconds: int = 300
+    webapp_url: str = ""
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    webapp_auth_max_age: int = 86400
 
     def is_admin(self, telegram_id: int) -> bool:
         """Access to the admin panel is granted by Telegram id only."""
@@ -125,6 +129,14 @@ def _read_settings() -> Settings:
         sync_seconds = 300
     sync_seconds = max(60, sync_seconds)
 
+    def _read_int(raw: str, default: int, *, minimum: int) -> int:
+        try:
+            value = int(raw) if raw.strip() else default
+        except ValueError:
+            logger.warning("Ignoring invalid integer setting: %r", raw)
+            return default
+        return max(minimum, value)
+
     return Settings(
         bot_token=os.getenv("BOT_TOKEN", "").strip(),
         database_url=normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./data/bot.db")),
@@ -135,6 +147,10 @@ def _read_settings() -> Settings:
         log_dir=log_dir,
         eitaa_sync_urls=_split_urls(os.getenv("EITAA_SYNC_URLS", "")),
         eitaa_sync_seconds=sync_seconds,
+        webapp_url=os.getenv("WEBAPP_URL", "").strip().rstrip("/"),
+        api_host=os.getenv("API_HOST", "").strip() or "127.0.0.1",
+        api_port=_read_int(os.getenv("API_PORT", ""), 8000, minimum=1),
+        webapp_auth_max_age=_read_int(os.getenv("WEBAPP_AUTH_MAX_AGE", ""), 86400, minimum=60),
     )
 
 
