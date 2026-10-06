@@ -170,3 +170,37 @@ class CourseGradesOut(BaseModel):
     course: CourseOut
     items: list[GradeItemOut]
     totals: GradeTotals
+
+
+class NoteIn(BaseModel):
+    title: str
+    description: str | None = None
+    course_id: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("title is required")
+        if len(value) > 128:
+            raise ValueError("title is too long")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _empty_desc_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class NoteOut(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    course_id: int | None
+    course_name: str | None
+    file_type: str
+    file_name: str | None

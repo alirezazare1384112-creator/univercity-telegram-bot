@@ -99,3 +99,19 @@ export interface GradeInput {
   kind: GradeKind;
   description?: string | null;
 }
+
+export interface Note {
+  id: number;
+  title: string;
+  description: string | null;
+  course_id: number | null;
+  course_name: string | null;
+  file_type: "photo" | "document";
+  file_name: string | null;
+}
+
+export interface NoteInput {
+  title: string;
+  description?: string | null;
+  course_id?: number | null;
+}

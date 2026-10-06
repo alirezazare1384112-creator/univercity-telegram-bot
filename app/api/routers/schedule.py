@@ -1,45 +1,26 @@
 ﻿from __future__ import annotations
 
-import contextlib
-import mimetypes
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import Response
-from telegram import InputFile
-from telegram.error import TelegramError
 
 from app.api.auth import current_user
+from app.api.files import (
+    MAX_FILE_BYTES,
+    MAX_PHOTO_BYTES,
+    fetch_telegram_file,
+    send_and_cleanup,
+)
+from app.api.files import (
+    bot_of as _bot,
+)
 from app.api.schemas import ScheduleOut
 from app.database.database import get_session
 from app.database.models import User
 from app.database.repositories.schedule_repository import WeeklyScheduleRepository
 
 router = APIRouter(prefix="/api", tags=["schedule"])
-
-# Photos are limited to 10MB by Telegram; every other file must stay below
-# the 20MB Bot API download limit so the Mini App can serve it back.
-MAX_PHOTO_BYTES = 10 * 1024 * 1024
-MAX_FILE_BYTES = 20 * 1024 * 1024
-
-# Types that must never be served as active content from our origin.
-_UNSAFE_MIME_PREFIXES = ("text/html", "application/xhtml", "image/svg")
-
-
-def _bot(request: Request) -> Any:
-    application = getattr(request.app.state, "bot_application", None)
-    if application is None:
-        raise HTTPException(status_code=503, detail="bot is not running")
-    return application.bot
-
-
-def _safe_media_type(guessed: str | None) -> str:
-    if not guessed:
-        return "application/octet-stream"
-    lowered = guessed.lower()
-    if lowered.startswith(_UNSAFE_MIME_PREFIXES):
-        return "application/octet-stream"
-    return lowered
 
 
 @router.get("/schedule", response_model=ScheduleOut)
@@ -62,15 +43,9 @@ async def download_schedule(
         raise HTTPException(status_code=404, detail="no schedule")
 
     bot = _bot(request)
-    try:
-        tg_file = await bot.get_file(schedule.telegram_file_id)
-        data = await tg_file.download_as_bytearray()
-    except (TelegramError, OSError) as exc:
-        raise HTTPException(status_code=502, detail="could not download from Telegram") from exc
-
-    media_type = _safe_media_type(mimetypes.guess_type(tg_file.file_path or "")[0])
+    data, media_type = await fetch_telegram_file(bot, schedule.telegram_file_id)
     headers = {"Cache-Control": "private, max-age=300"}
-    return Response(content=bytes(data), media_type=media_type, headers=headers)
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 @router.post("/schedule", response_model=ScheduleOut)
@@ -90,20 +65,13 @@ async def upload_schedule(
         raise HTTPException(status_code=413, detail="file too large")
 
     bot = _bot(request)
-    payload = InputFile(data, filename=file.filename or "schedule")
-    try:
-        if is_image:
-            message = await bot.send_photo(chat_id=user.telegram_id, photo=payload)
-            best = message.photo[-1]
-            file_id, file_unique_id, file_type = best.file_id, best.file_unique_id, "photo"
-        else:
-            message = await bot.send_document(chat_id=user.telegram_id, document=payload)
-            doc = message.document
-            file_id, file_unique_id, file_type = doc.file_id, doc.file_unique_id, "document"
-        with contextlib.suppress(TelegramError):
-            await bot.delete_message(chat_id=user.telegram_id, message_id=message.message_id)
-    except TelegramError as exc:
-        raise HTTPException(status_code=502, detail="could not upload to Telegram") from exc
+    file_id, file_unique_id, file_type = await send_and_cleanup(
+        bot,
+        chat_id=user.telegram_id,
+        data=data,
+        filename=file.filename or "schedule",
+        content_type=content_type,
+    )
 
     caption = file.filename or None
     async with get_session() as session:

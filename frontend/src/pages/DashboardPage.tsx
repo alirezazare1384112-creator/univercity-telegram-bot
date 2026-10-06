@@ -10,14 +10,33 @@ type State =
   | { kind: "error"; message: string }
   | { kind: "ready"; data: Dashboard };
 
-function StatCard({ icon, label, value }: { icon: string; label: string; value: number }) {
-  return (
-    <div className="rounded-2xl bg-black/5 p-4 text-center">
+function StatCard({
+  icon,
+  label,
+  value,
+  to,
+}: {
+  icon: string;
+  label: string;
+  value: number;
+  to?: string;
+}) {
+  const content = (
+    <>
       <div className="text-xl leading-none">{icon}</div>
       <div className="mt-1 text-xl font-bold">{value.toLocaleString("fa-IR")}</div>
       <div className="mt-0.5 text-xs opacity-70">{label}</div>
-    </div>
+    </>
   );
+  const styles = "block rounded-2xl bg-black/5 p-4 text-center active:opacity-80";
+  if (to) {
+    return (
+      <Link to={to} className={styles}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={styles}>{content}</div>;
 }
 
 export default function DashboardPage() {
@@ -75,7 +94,7 @@ export default function DashboardPage() {
         <StatCard icon="📢" label="اطلاعیه‌ها" value={counts.announcements} />
         <StatCard icon="⏰" label="یادآوری‌ها" value={counts.reminders} />
         <StatCard icon="📆" label="رویدادهای امروز" value={counts.events_today} />
-        <StatCard icon="📖" label="جزوه‌ها" value={counts.notes} />
+        <StatCard icon="📖" label="جزوه‌ها" value={counts.notes} to="/notes" />
         <StatCard icon="🔗" label="لینک‌ها" value={counts.links} />
       </section>
 

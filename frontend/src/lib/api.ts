@@ -6,6 +6,8 @@ import type {
   GradeInput,
   GradeItem,
   Me,
+  Note,
+  NoteInput,
   ScheduleInfo,
 } from "./types";
 import { getWebApp } from "./telegram";
@@ -91,4 +93,21 @@ export const api = {
     request<{ deleted: boolean }>(`/api/courses/${courseId}/grades/${itemId}`, {
       method: "DELETE",
     }),
+  notes: (courseId?: number) =>
+    request<Note[]>(
+      courseId === undefined ? "/api/notes" : `/api/notes?course_id=${courseId}`,
+    ),
+  uploadNote: (file: File, meta: NoteInput) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("title", meta.title);
+    if (meta.description) form.append("description", meta.description);
+    if (meta.course_id != null) form.append("course_id", String(meta.course_id));
+    return request<Note>("/api/notes", { method: "POST", body: form });
+  },
+  updateNote: (id: number, payload: NoteInput) =>
+    request<Note>(`/api/notes/${id}`, jsonInit("PUT", payload)),
+  deleteNote: (id: number) =>
+    request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }),
+  noteFile: (id: number) => requestBlob(`/api/notes/${id}/file`),
 };
