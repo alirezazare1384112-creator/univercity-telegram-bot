@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  --tg-bg: #ffffff;
+  --tg-text: #1b1b1b;
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: Vazirmatn, "Segoe UI", Tahoma, Arial, sans-serif;
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  -webkit-font-smoothing: antialiased;
+}

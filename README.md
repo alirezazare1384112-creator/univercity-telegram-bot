@@ -320,6 +320,20 @@ py -3.13 run.py --bot        # فقط ربات، بدون API
 
 اگر توکن خالی یا placeholder باشد، ربات با پیام راهنمای شفاف متوقف می‌شود.
 
+### ۶.۵ فرانت‌اند Mini App (`frontend/`)
+
+React + TypeScript + Vite + Tailwind؛ فارسی/RTL، فونت وزیرمتن و تم تلگرام:
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173  (پروکسی /api → 127.0.0.1:8000)
+npm run build      # خروجی production در frontend/dist
+```
+
+در توسعه، Vite درخواست‌های `/api` را به API همان پروسهٔ ربات (پورت ۸۰۰۰)
+می‌فرستد؛ ورود با `initData` امضاشدهٔ تلگرام انجام می‌شود.
+
 ---
 
 ## ۷. تست
@@ -434,6 +448,7 @@ journalctl -u student-bot -f        # مشاهدهٔ لاگ
 * [x] ۲۳۳ تست خودکار (بدون شبکه) + `run.py --check` — شامل تست‌های
   جداسازی دادهٔ دانشجوها (IDOR)، سفر کامل کاربر (End-to-End) و ری‌استارت
 * [x] 📱 بک‌اند Mini App (FastAPI در همان پروسهٔ ربات + احراز هویت `initData` تلگرام)
+* [x] 🎨 اسکلت فرانت‌اند Mini App (React + TS + Vite + Tailwind، RTL فارسی، صفحهٔ اتصال)
 * [x] CI روی گیت‌هاب (GitHub Actions با هر push: ruff + alembic + تست‌ها)
 
 ## ۱۱. قابلیت‌های نیازمند API / سرویس خارجی
