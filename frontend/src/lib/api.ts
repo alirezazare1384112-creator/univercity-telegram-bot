@@ -1,4 +1,6 @@
 import type {
+  CalendarEvent,
+  CalendarEventInput,
   Course,
   CourseGrades,
   CourseInput,
@@ -110,4 +112,12 @@ export const api = {
   deleteNote: (id: number) =>
     request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }),
   noteFile: (id: number) => requestBlob(`/api/notes/${id}/file`),
+  calendarEvents: (done = false) =>
+    request<CalendarEvent[]>(`/api/calendar?done=${done}`),
+  createEvent: (payload: CalendarEventInput) =>
+    request<CalendarEvent>("/api/calendar", jsonInit("POST", payload)),
+  updateEvent: (id: number, payload: CalendarEventInput) =>
+    request<CalendarEvent>(`/api/calendar/${id}`, jsonInit("PUT", payload)),
+  deleteEvent: (id: number) =>
+    request<{ deleted: boolean }>(`/api/calendar/${id}`, { method: "DELETE" }),
 };

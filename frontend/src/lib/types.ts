@@ -115,3 +115,21 @@ export interface NoteInput {
   description?: string | null;
   course_id?: number | null;
 }
+
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  date_label: string;
+  description: string | null;
+  is_done: boolean;
+}
+
+export interface CalendarEventInput {
+  title: string;
+  event_date: string;
+  event_time?: string | null;
+  description?: string | null;
+  is_done?: boolean;
+}

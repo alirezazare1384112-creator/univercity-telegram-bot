@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, time
+
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
@@ -204,3 +206,46 @@ class NoteOut(BaseModel):
     course_name: str | None
     file_type: str
     file_name: str | None
+
+
+class CalendarEventIn(BaseModel):
+    title: str
+    event_date: date
+    event_time: time | None = None
+    description: str | None = None
+    is_done: bool = False
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("title is required")
+        if len(value) > 128:
+            raise ValueError("title is too long")
+        return value
+
+    @field_validator("event_date")
+    @classmethod
+    def _sane_date(cls, value: date) -> date:
+        if not date(2000, 1, 1) <= value <= date(2100, 12, 31):
+            raise ValueError("event_date is out of range")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _empty_desc_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class CalendarEventOut(BaseModel):
+    id: int
+    title: str
+    event_date: date
+    event_time: str | None
+    date_label: str
+    description: str | None
+    is_done: bool

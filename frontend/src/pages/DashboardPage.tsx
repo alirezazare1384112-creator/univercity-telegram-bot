@@ -93,7 +93,12 @@ export default function DashboardPage() {
         <StatCard icon="📚" label="دروس" value={counts.courses} />
         <StatCard icon="📢" label="اطلاعیه‌ها" value={counts.announcements} />
         <StatCard icon="⏰" label="یادآوری‌ها" value={counts.reminders} />
-        <StatCard icon="📆" label="رویدادهای امروز" value={counts.events_today} />
+        <StatCard
+          icon="📆"
+          label="رویدادهای امروز"
+          value={counts.events_today}
+          to="/calendar"
+        />
         <StatCard icon="📖" label="جزوه‌ها" value={counts.notes} to="/notes" />
         <StatCard icon="🔗" label="لینک‌ها" value={counts.links} />
       </section>
