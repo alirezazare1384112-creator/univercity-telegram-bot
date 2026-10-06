@@ -5,6 +5,7 @@ import Spinner from "./components/Spinner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { getWebApp } from "./lib/telegram";
 import ConnectPage from "./pages/ConnectPage";
+import CoursesPage from "./pages/CoursesPage";
 import DashboardPage from "./pages/DashboardPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import SchedulePage from "./pages/SchedulePage";
@@ -39,7 +40,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
-          <Route path="/courses" element={<PlaceholderPage title="دروس" />} />
+          <Route path="/courses" element={<CoursesPage />} />
           <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

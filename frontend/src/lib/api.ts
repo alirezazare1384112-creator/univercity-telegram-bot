@@ -1,4 +1,4 @@
-import type { Dashboard, Me, ScheduleInfo } from "./types";
+import type { Course, CourseInput, Dashboard, Me, ScheduleInfo } from "./types";
 import { getWebApp } from "./telegram";
 
 const INIT_DATA_HEADER = "X-Telegram-Init-Data";
@@ -39,6 +39,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+function jsonInit(method: string, payload: unknown): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+}
+
 async function requestBlob(path: string): Promise<Blob> {
   const response = await fetch(path, { headers: authHeaders() });
   if (!response.ok) throw await toError(response);
@@ -57,4 +65,11 @@ export const api = {
     return request<ScheduleInfo>("/api/schedule", { method: "POST", body: form });
   },
   deleteSchedule: () => request<{ deleted: boolean }>("/api/schedule", { method: "DELETE" }),
+  courses: () => request<Course[]>("/api/courses"),
+  createCourse: (payload: CourseInput) =>
+    request<Course>("/api/courses", jsonInit("POST", payload)),
+  updateCourse: (id: number, payload: CourseInput) =>
+    request<Course>(`/api/courses/${id}`, jsonInit("PUT", payload)),
+  deleteCourse: (id: number) =>
+    request<{ deleted: boolean }>(`/api/courses/${id}`, { method: "DELETE" }),
 };

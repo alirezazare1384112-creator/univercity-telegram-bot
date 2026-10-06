@@ -39,3 +39,20 @@ export interface ScheduleInfo {
   file_type: string | null;
   caption: string | null;
 }
+
+export interface Course {
+  id: number;
+  name: string;
+  units: number;
+  teacher_name: string | null;
+  semester: string | null;
+  academic_year: string | null;
+}
+
+export interface CourseInput {
+  name: string;
+  units: number;
+  teacher_name?: string | null;
+  semester?: string | null;
+  academic_year?: string | null;
+}
