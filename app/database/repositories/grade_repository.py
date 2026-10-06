@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import GradeItem
+from app.database.models.grade import GRADE_KIND_OTHER
 
 
 class GradeItemRepository:
@@ -36,6 +37,7 @@ class GradeItemRepository:
         score: float,
         max_score: float,
         description: str | None = None,
+        kind: str = GRADE_KIND_OTHER,
     ) -> GradeItem:
         item = GradeItem(
             course_id=course_id,
@@ -43,6 +45,7 @@ class GradeItemRepository:
             score=score,
             max_score=max_score,
             description=description or None,
+            kind=kind,
         )
         self._session.add(item)
         await self._session.flush()

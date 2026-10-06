@@ -7,6 +7,7 @@ import { getWebApp } from "./lib/telegram";
 import ConnectPage from "./pages/ConnectPage";
 import CoursesPage from "./pages/CoursesPage";
 import DashboardPage from "./pages/DashboardPage";
+import GradesPage from "./pages/GradesPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import SchedulePage from "./pages/SchedulePage";
 
@@ -41,6 +42,7 @@ function Shell() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/courses" element={<CoursesPage />} />
+          <Route path="/courses/:courseId/grades" element={<GradesPage />} />
           <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

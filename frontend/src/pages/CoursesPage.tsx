@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
@@ -36,6 +37,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function CoursesPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState<PageState>({ kind: "loading" });
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -246,6 +248,13 @@ export default function CoursesPage() {
                 </span>
               </div>
               <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/courses/${course.id}/grades`)}
+                  className="flex-1 rounded-xl bg-emerald-600/10 px-3 py-2 text-xs font-bold text-emerald-700 active:opacity-80"
+                >
+                  📝 نمرات
+                </button>
                 <button
                   type="button"
                   onClick={() => openEdit(course)}

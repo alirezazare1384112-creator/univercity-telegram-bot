@@ -1,4 +1,13 @@
-import type { Course, CourseInput, Dashboard, Me, ScheduleInfo } from "./types";
+import type {
+  Course,
+  CourseGrades,
+  CourseInput,
+  Dashboard,
+  GradeInput,
+  GradeItem,
+  Me,
+  ScheduleInfo,
+} from "./types";
 import { getWebApp } from "./telegram";
 
 const INIT_DATA_HEADER = "X-Telegram-Init-Data";
@@ -72,4 +81,14 @@ export const api = {
     request<Course>(`/api/courses/${id}`, jsonInit("PUT", payload)),
   deleteCourse: (id: number) =>
     request<{ deleted: boolean }>(`/api/courses/${id}`, { method: "DELETE" }),
+  courseGrades: (courseId: number) =>
+    request<CourseGrades>(`/api/courses/${courseId}/grades`),
+  createGrade: (courseId: number, payload: GradeInput) =>
+    request<GradeItem>(`/api/courses/${courseId}/grades`, jsonInit("POST", payload)),
+  updateGrade: (courseId: number, itemId: number, payload: GradeInput) =>
+    request<GradeItem>(`/api/courses/${courseId}/grades/${itemId}`, jsonInit("PUT", payload)),
+  deleteGrade: (courseId: number, itemId: number) =>
+    request<{ deleted: boolean }>(`/api/courses/${courseId}/grades/${itemId}`, {
+      method: "DELETE",
+    }),
 };

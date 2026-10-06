@@ -56,3 +56,46 @@ export interface CourseInput {
   semester?: string | null;
   academic_year?: string | null;
 }
+
+export type GradeKind = "HOMEWORK" | "QUIZ" | "MIDTERM" | "FINAL" | "PROJECT" | "OTHER";
+
+export const GRADE_KIND_LABELS: Record<GradeKind, string> = {
+  HOMEWORK: "تکلیف",
+  QUIZ: "کوییز",
+  MIDTERM: "میان‌ترم",
+  FINAL: "پایان‌ترم",
+  PROJECT: "پروژه",
+  OTHER: "سایر",
+};
+
+export const GRADE_KINDS = Object.keys(GRADE_KIND_LABELS) as GradeKind[];
+
+export interface GradeItem {
+  id: number;
+  title: string;
+  score: number;
+  max_score: number;
+  kind: GradeKind;
+  description: string | null;
+  percent: number;
+}
+
+export interface GradeTotals {
+  total: number;
+  maximum: number;
+  percent: number;
+}
+
+export interface CourseGrades {
+  course: Course;
+  items: GradeItem[];
+  totals: GradeTotals;
+}
+
+export interface GradeInput {
+  title: string;
+  score: number;
+  max_score: number;
+  kind: GradeKind;
+  description?: string | null;
+}
