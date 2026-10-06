@@ -10,9 +10,15 @@ import logging
 import urllib.parse
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    CallbackQueryHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+)
 
-from app.bot.helpers import answer
+from app.bot.helpers import answer, open_exclusive
 from app.bot.keyboards.main_menu import GPA, main_menu_keyboard
 from app.config import get_settings
 
@@ -75,7 +81,8 @@ async def gpa_back(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await answer(update, context, "به منوی اصلی برگشتی 👇", reply_markup=main_menu_keyboard())
 
 
-def register(app) -> None:
+def register(app, conversations: list[ConversationHandler]) -> None:
     """The GPA section is a simple handler, no conversation needed."""
-    app.add_handler(MessageHandler(filters.Text([GPA]), gpa_handler), group=0)
+    handler = MessageHandler(filters.Text([GPA]), gpa_handler)
+    app.add_handler(open_exclusive(handler, conversations), group=0)
     app.add_handler(CallbackQueryHandler(gpa_back, pattern=r"^gpa:back$"), group=0)

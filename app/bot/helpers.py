@@ -5,12 +5,31 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes
+from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import BaseHandler, ContextTypes, ConversationHandler
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def open_exclusive(handler: BaseHandler, siblings: list[ConversationHandler]) -> BaseHandler:
+    """Wrap ``handler`` so firing it first closes the sibling conversations.
+
+    One feature may own the screen at a time. PTB keeps every conversation's
+    state in ``_conversations`` (keyed like ``_get_key``), so a background
+    wizard would otherwise swallow the next photo or text - a note's photo
+    used to be saved as the weekly schedule.
+    """
+    original = handler.callback
+
+    async def enter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        for sibling in siblings:
+            sibling._conversations.pop(sibling._get_key(update), None)
+        return await original(update, context)
+
+    handler.callback = enter
+    return handler
 
 
 def chat_id(update: Any) -> int | None:
