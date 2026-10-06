@@ -7,6 +7,7 @@ import { getWebApp } from "./lib/telegram";
 import ConnectPage from "./pages/ConnectPage";
 import DashboardPage from "./pages/DashboardPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import SchedulePage from "./pages/SchedulePage";
 
 function BackButtonController() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ function Shell() {
       <main className="flex-1 p-4 pb-24">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/schedule" element={<PlaceholderPage title="برنامهٔ هفتگی" />} />
+          <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/courses" element={<PlaceholderPage title="دروس" />} />
           <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
           <Route path="*" element={<Navigate to="/" replace />} />

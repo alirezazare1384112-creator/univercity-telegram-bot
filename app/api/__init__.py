@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
-from app.api.routers import dashboard, me
+from app.api.routers import dashboard, me, schedule
 
 # Vite dev servers; production is same-origin so no CORS is needed there.
 _DEV_ORIGINS = (
@@ -36,6 +36,7 @@ def create_api(application: Application | None = None) -> FastAPI:
 
     api.include_router(me.router)
     api.include_router(dashboard.router)
+    api.include_router(schedule.router)
 
     @api.get("/api/health")
     async def health() -> dict[str, str]:

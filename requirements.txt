@@ -12,5 +12,7 @@ jdatetime>=5.0.0
 # Mini App backend (bot + API share one process)
 fastapi>=0.115
 uvicorn>=0.30
+# multipart file upload (weekly schedule)
+python-multipart>=0.0.9
 # IANA time zone database (required by zoneinfo on Windows)
 tzdata>=2024.1 ; sys_platform == "win32"

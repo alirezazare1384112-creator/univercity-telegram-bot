@@ -33,3 +33,9 @@ export interface Dashboard {
   schedule: boolean;
   next_reminder: NextReminder | null;
 }
+
+export interface ScheduleInfo {
+  exists: boolean;
+  file_type: string | null;
+  caption: string | null;
+}

@@ -41,3 +41,9 @@ class DashboardOut(BaseModel):
     counts: DashboardCounts
     schedule: bool
     next_reminder: NextReminder | None
+
+
+class ScheduleOut(BaseModel):
+    exists: bool
+    file_type: str | None = None
+    caption: str | None = None
