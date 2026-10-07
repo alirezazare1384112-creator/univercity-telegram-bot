@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
+import {
+  J_MONTHS,
+  daysInMonth,
+  isoToJalali,
+  jalaliToIso,
+  todayIso,
+  todayJalali,
+} from "../lib/jalali";
+import type { JalaliDate } from "../lib/jalali";
 import { getWebApp } from "../lib/telegram";
 import {
   ALERT_LABELS,
@@ -51,6 +60,10 @@ function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "ارتباط با سرور برقرار نشد";
 }
 
+function fa(n: number): string {
+  return n.toLocaleString("fa-IR");
+}
+
 function toInput(reminder: Reminder): ReminderInput {
   return {
     title: reminder.title,
@@ -70,6 +83,10 @@ export default function RemindersPage() {
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+
+  const dateStr = form?.local_datetime ? form.local_datetime.slice(0, 10) : todayIso();
+  const timeStr =
+    form && form.local_datetime.length >= 16 ? form.local_datetime.slice(11, 16) : "";
 
   const load = useCallback(async () => {
     setPage({ kind: "loading" });
@@ -113,6 +130,19 @@ export default function RemindersPage() {
     setForm({ ...form, alert_offsets: next });
   };
 
+  const setDatePart = (part: "jy" | "jm" | "jd", value: number) => {
+    if (!form) return;
+    const next: JalaliDate = { ...isoToJalali(dateStr), [part]: value };
+    const dim = daysInMonth(next.jy, next.jm);
+    if (next.jd > dim) next.jd = dim;
+    setForm({ ...form, local_datetime: `${jalaliToIso(next)}T${timeStr}` });
+  };
+
+  const setTime = (value: string) => {
+    if (!form) return;
+    setForm({ ...form, local_datetime: `${dateStr}T${value}` });
+  };
+
   const save = async () => {
     if (!form) return;
     const title = form.title.trim();
@@ -120,7 +150,7 @@ export default function RemindersPage() {
       setBanner("عنوان یادآوری را وارد کنید.");
       return;
     }
-    if (!form.local_datetime) {
+    if (form.local_datetime.length < 16) {
       setBanner("تاریخ و ساعت را انتخاب کنید.");
       return;
     }
@@ -202,6 +232,12 @@ export default function RemindersPage() {
   const paused = page.reminders.filter((reminder) => !reminder.is_active);
   const visible = tab === "active" ? active : paused;
 
+  const j: JalaliDate = isoToJalali(dateStr);
+  const nowJ = todayJalali();
+  const years: number[] = [];
+  for (let y = Math.min(nowJ.jy - 1, j.jy); y <= Math.max(nowJ.jy + 3, j.jy); y++) years.push(y);
+  const dayCount = daysInMonth(j.jy, j.jm);
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -232,11 +268,49 @@ export default function RemindersPage() {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              className={field}
+              value={j.jy}
+              onChange={(e) => setDatePart("jy", Number(e.target.value))}
+              aria-label="سال"
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {fa(y)}
+                </option>
+              ))}
+            </select>
+            <select
+              className={field}
+              value={j.jm}
+              onChange={(e) => setDatePart("jm", Number(e.target.value))}
+              aria-label="ماه"
+            >
+              {J_MONTHS.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <select
+              className={field}
+              value={j.jd}
+              onChange={(e) => setDatePart("jd", Number(e.target.value))}
+              aria-label="روز"
+            >
+              {Array.from({ length: dayCount }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {fa(d)}
+                </option>
+              ))}
+            </select>
+          </div>
           <input
-            type="datetime-local"
+            type="time"
             className={field}
-            value={form.local_datetime}
-            onChange={(e) => setForm({ ...form, local_datetime: e.target.value })}
+            value={timeStr}
+            onChange={(e) => setTime(e.target.value)}
           />
           <textarea
             className={`${field} min-h-16`}
