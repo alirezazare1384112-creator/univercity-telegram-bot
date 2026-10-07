@@ -11,6 +11,14 @@ export interface Me {
   bio: string | null;
 }
 
+export interface ProfileInput {
+  student_number: string | null;
+  field_of_study: string | null;
+  university: string | null;
+  semester: string | null;
+  bio: string | null;
+}
+
 export interface DashboardCounts {
   courses: number;
   notes: number;

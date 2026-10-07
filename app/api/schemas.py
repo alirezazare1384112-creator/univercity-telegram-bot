@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class MeOut(BaseModel):
@@ -371,3 +378,37 @@ class LinkOut(BaseModel):
     title: str
     url: str
     description: str | None
+
+
+class ProfileIn(BaseModel):
+    student_number: str | None = None
+    field_of_study: str | None = None
+    university: str | None = None
+    semester: str | None = None
+    bio: str | None = None
+
+    @field_validator("student_number", "field_of_study", "university", "semester")
+    @classmethod
+    def _check_profile_field(cls, value: str | None, info: ValidationInfo) -> str | None:
+        from app.utils.validation import validate_profile_field
+
+        if value is None:
+            return None
+        if not value.strip():
+            return None  # empty means "clear this field"
+        ok, cleaned, error = validate_profile_field(str(info.field_name), value)
+        if not ok:
+            raise ValueError(error)
+        return cleaned
+
+    @field_validator("bio")
+    @classmethod
+    def _check_bio(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if len(value) > 500:
+            raise ValueError("bio is too long (max 500)")
+        return value

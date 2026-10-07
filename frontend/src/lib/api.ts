@@ -12,6 +12,7 @@ import type {
   Me,
   Note,
   NoteInput,
+  ProfileInput,
   Reminder,
   ReminderInput,
   ScheduleInfo,
@@ -144,4 +145,5 @@ export const api = {
     request<UniversityLink>(`/api/links/${id}`, jsonInit("PUT", payload)),
   deleteLink: (id: number) =>
     request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }),
+  updateMe: (payload: ProfileInput) => request<Me>("/api/me", jsonInit("PUT", payload)),
 };

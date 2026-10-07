@@ -12,7 +12,7 @@ import DashboardPage from "./pages/DashboardPage";
 import GradesPage from "./pages/GradesPage";
 import LinksPage from "./pages/LinksPage";
 import NotesPage from "./pages/NotesPage";
-import PlaceholderPage from "./pages/PlaceholderPage";
+import ProfilePage from "./pages/ProfilePage";
 import RemindersPage from "./pages/RemindersPage";
 import SchedulePage from "./pages/SchedulePage";
 
@@ -53,7 +53,7 @@ function Shell() {
           <Route path="/reminders" element={<RemindersPage />} />
           <Route path="/announcements" element={<AnnouncementsPage />} />
           <Route path="/links" element={<LinksPage />} />
-          <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
