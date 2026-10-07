@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+import time
+from collections import deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -37,6 +40,56 @@ _DEV_ORIGINS = (
 # the route handlers (multipart bodies are buffered in memory before parsing).
 _MAX_BODY_BYTES = 25 * 1024 * 1024
 
+# Sliding-window cap per client on /api/* (static SPA files are not counted).
+_RATE_LIMIT_PER_MINUTE = 300
+_RATE_WINDOW_SECONDS = 60.0
+_RATE_LIMIT_MAX_KEYS = 10_000
+
+
+def _install_rate_limit(api: FastAPI) -> None:
+    """Return 429 (with Retry-After) when a client exceeds the window.
+
+    Clients are keyed by the first X-Forwarded-For entry when present
+    (behind cloudflared the direct peer is always localhost), falling
+    back to the socket address. State lives on ``api.state`` so tests
+    can shrink the limit or the window.
+    """
+
+    hits: dict[str, deque[float]] = {}
+
+    @api.middleware("http")
+    async def rate_limit(request: Request, call_next) -> object:
+        if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+            forwarded = request.headers.get("x-forwarded-for", "")
+            if forwarded:
+                key = forwarded.split(",")[0].strip()
+            elif request.client:
+                key = request.client.host
+            else:
+                key = ""
+            window = float(api.state.rate_window)
+            limit = int(api.state.rate_limit)
+            now = time.monotonic()
+            bucket = hits.setdefault(key, deque())
+            while bucket and now - bucket[0] > window:
+                bucket.popleft()
+            if len(bucket) >= limit:
+                retry_after = max(1, math.ceil(window - (now - bucket[0])))
+                return JSONResponse(
+                    {
+                        "detail": (
+                            "تعداد درخواست‌ها بیش از حد مجاز است؛ "
+                            "کمی بعد دوباره تلاش کنید"
+                        )
+                    },
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+            bucket.append(now)
+            if len(hits) > _RATE_LIMIT_MAX_KEYS:
+                hits.clear()
+        return await call_next(request)
+
 
 def _install_security(api: FastAPI) -> None:
     """Body-size cap plus hardening headers for every response.
@@ -65,6 +118,8 @@ def create_api(application: Application | None = None) -> FastAPI:
     """
     api = FastAPI(title="Student Assistant API", version="1.0.0")
     api.state.bot_application = application
+    api.state.rate_limit = _RATE_LIMIT_PER_MINUTE
+    api.state.rate_window = _RATE_WINDOW_SECONDS
 
     api.add_middleware(
         CORSMiddleware,
@@ -72,6 +127,9 @@ def create_api(application: Application | None = None) -> FastAPI:
         allow_headers=[INIT_DATA_HEADER],
         allow_methods=["GET", "PUT", "POST", "DELETE", "OPTIONS"],
     )
+    # Installed first so the security middleware stays outermost and its
+    # headers also land on rate-limited (429) responses.
+    _install_rate_limit(api)
     _install_security(api)
 
     api.include_router(me.router)
