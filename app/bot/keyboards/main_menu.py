@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from telegram import ReplyKeyboardMarkup
+from telegram import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 from telegram.ext import filters
 
 from app.bot.keyboards.common import reply_keyboard
+from app.config import get_settings
 
 # --- labels -------------------------------------------------------------
 SCHEDULE = "📅 برنامه هفتگی"
@@ -18,6 +19,7 @@ ANNOUNCEMENTS = "📢 اطلاعیه‌ها"
 NOTES = "📚 جزوه‌ها"
 LINKS = "🔗 سامانه‌های دانشگاه"
 PROFILE = "👤 پروفایل"
+MINI_APP = "📱 باز کردن مینی‌اپ"
 
 MAIN_MENU_TITLE = "🎓 دستیار دانشجو\nمنوی اصلی — یک گزینه را انتخاب کنید:"
 
@@ -41,14 +43,24 @@ def menu_buttons_filter() -> filters.Filter:
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """The permanent main menu of the bot."""
-    return reply_keyboard(
-        [
-            [SCHEDULE],
-            [COURSES, GRADES],
-            [GPA],
-            [REMINDERS, CALENDAR],
-            [ANNOUNCEMENTS, NOTES],
-            [LINKS, PROFILE],
-        ]
-    )
+    """The permanent main menu of the bot.
+
+    When ``WEBAPP_URL`` points at an https address, the first row becomes a
+    Telegram WebApp button that opens the Mini App (bot API rejects plain
+    http or non-url values, so those are ignored).
+    """
+    rows: list[list[str | KeyboardButton]] = [
+        [SCHEDULE],
+        [COURSES, GRADES],
+        [GPA],
+        [REMINDERS, CALENDAR],
+        [ANNOUNCEMENTS, NOTES],
+        [LINKS, PROFILE],
+    ]
+    webapp_url = get_settings().webapp_url
+    if webapp_url.startswith("https://"):
+        rows.insert(
+            0,
+            [KeyboardButton(MINI_APP, web_app=WebAppInfo(url=webapp_url))],
+        )
+    return reply_keyboard(rows)

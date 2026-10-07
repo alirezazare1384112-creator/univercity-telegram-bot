@@ -12,10 +12,15 @@ BACK = "🔙 بازگشت"
 CANCEL = "❌ لغو"
 
 
-def reply_keyboard(rows: list[list[str]], resize: bool = True) -> ReplyKeyboardMarkup:
-    """Build a reply keyboard from a list of rows of labels."""
+def reply_keyboard(
+    rows: list[list[str | KeyboardButton]], resize: bool = True
+) -> ReplyKeyboardMarkup:
+    """Build a reply keyboard from a list of rows of labels or buttons."""
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(label) for label in row] for row in rows],
+        [
+            [label if isinstance(label, KeyboardButton) else KeyboardButton(label) for label in row]
+            for row in rows
+        ],
         resize_keyboard=True,
         one_time_keyboard=False,
         input_field_placeholder="یک گزینه را انتخاب کنید" if resize else None,

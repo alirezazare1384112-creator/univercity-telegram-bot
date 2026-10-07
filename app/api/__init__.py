@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
@@ -61,5 +65,22 @@ def create_api(application: Application | None = None) -> FastAPI:
     @api.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # Production: serve the built Mini App from frontend/dist (SPA fallback).
+    # In dev the Vite server answers on :5173, so a missing dist/ is fine.
+    dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    if dist.is_dir():
+        assets = dist / "assets"
+        if assets.is_dir():
+            api.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+        @api.get("/{full_path:path}", include_in_schema=False)
+        async def spa(full_path: str) -> FileResponse:
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404)
+            candidate = (dist / full_path).resolve()
+            if full_path and candidate.is_relative_to(dist) and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(dist / "index.html")
 
     return api
