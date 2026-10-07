@@ -1,4 +1,5 @@
 import type {
+  Announcement,
   CalendarEvent,
   CalendarEventInput,
   Course,
@@ -130,4 +131,8 @@ export const api = {
     request<Reminder>(`/api/reminders/${id}`, jsonInit("PUT", payload)),
   deleteReminder: (id: number) =>
     request<{ deleted: boolean }>(`/api/reminders/${id}`, { method: "DELETE" }),
+  announcements: () => request<Announcement[]>("/api/announcements"),
+  announcementFile: (id: number) => requestBlob(`/api/announcements/${id}/file`),
+  deleteAnnouncement: (id: number) =>
+    request<{ deleted: boolean }>(`/api/announcements/${id}`, { method: "DELETE" }),
 };

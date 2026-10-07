@@ -317,3 +317,14 @@ class ReminderOut(BaseModel):
     repeat_label: str
     is_active: bool
     alert_offsets: list[str]
+
+
+class AnnouncementOut(BaseModel):
+    id: int
+    title: str
+    text: str | None
+    source: str
+    source_url: str | None
+    file_type: str | None
+    created_at: datetime
+    display: str

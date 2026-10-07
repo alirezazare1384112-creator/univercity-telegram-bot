@@ -8,6 +8,7 @@ from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
 from app.api.routers import (
+    announcements,
     calendar,
     courses,
     dashboard,
@@ -51,6 +52,7 @@ def create_api(application: Application | None = None) -> FastAPI:
     api.include_router(notes.router)
     api.include_router(calendar.router)
     api.include_router(reminders.router)
+    api.include_router(announcements.router)
 
     @api.get("/api/health")
     async def health() -> dict[str, str]:

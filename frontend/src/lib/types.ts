@@ -178,3 +178,14 @@ export interface ReminderInput {
   is_active?: boolean;
   alert_offsets?: AlertOffset[];
 }
+
+export interface Announcement {
+  id: number;
+  title: string;
+  text: string | null;
+  source: "telegram" | "eitaa";
+  source_url: string | null;
+  file_type: "photo" | "document" | null;
+  created_at: string;
+  display: string;
+}

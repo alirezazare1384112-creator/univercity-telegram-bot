@@ -4,6 +4,7 @@ import BottomNav from "./components/BottomNav";
 import Spinner from "./components/Spinner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { getWebApp } from "./lib/telegram";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
 import CalendarPage from "./pages/CalendarPage";
 import ConnectPage from "./pages/ConnectPage";
 import CoursesPage from "./pages/CoursesPage";
@@ -49,6 +50,7 @@ function Shell() {
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/reminders" element={<RemindersPage />} />
+          <Route path="/announcements" element={<AnnouncementsPage />} />
           <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
