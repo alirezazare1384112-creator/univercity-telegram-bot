@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from telegram import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 from telegram.ext import filters
 
 from app.bot.keyboards.common import reply_keyboard
@@ -64,3 +70,18 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(MINI_APP, web_app=WebAppInfo(url=webapp_url))],
         )
     return reply_keyboard(rows)
+
+
+def mini_app_inline_keyboard() -> InlineKeyboardMarkup | None:
+    """Inline variant of the Mini App button.
+
+    Some Android clients open reply-keyboard WebApp buttons without auth
+    data (empty ``initData``); inline ``web_app`` buttons are the
+    longest-supported path, so /start offers both.
+    """
+    webapp_url = get_settings().webapp_url
+    if not webapp_url.startswith("https://"):
+        return None
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(MINI_APP, web_app=WebAppInfo(url=webapp_url))]]
+    )

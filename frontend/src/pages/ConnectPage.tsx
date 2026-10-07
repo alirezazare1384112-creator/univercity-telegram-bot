@@ -6,11 +6,13 @@ interface Props {
 function Diagnostics() {
   const webApp =
     typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
+  const hashLength =
+    typeof window !== "undefined" ? window.location.hash.length : 0;
   return (
     <p className="font-mono text-[11px] opacity-60" dir="ltr">
-      script: {webApp ? "OK" : "MISSING"} · initData:{" "}
-      {webApp?.initData ? webApp.initData.length : 0} chars · platform:{" "}
-      {webApp?.platform ?? "-"}
+      script: {webApp ? "OK" : "MISSING"} · hash: {hashLength}ch · initData:{" "}
+      {webApp?.initData ? webApp.initData.length : 0}ch · v
+      {webApp?.version ?? "?"} · {webApp?.platform ?? "-"}
     </p>
   );
 }

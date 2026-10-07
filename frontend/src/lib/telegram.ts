@@ -3,6 +3,7 @@
 export interface TelegramWebApp {
   initData: string;
   platform?: string;
+  version?: string;
   initDataUnsafe: {
     user?: {
       id: number;

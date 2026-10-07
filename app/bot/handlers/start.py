@@ -8,7 +8,11 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.bot.helpers import answer
-from app.bot.keyboards.main_menu import MAIN_MENU_TITLE, main_menu_keyboard
+from app.bot.keyboards.main_menu import (
+    MAIN_MENU_TITLE,
+    main_menu_keyboard,
+    mini_app_inline_keyboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         greeting = f"خوش برگشتی {name}! 👋\n\n" + WELCOME_TEXT.split("\n", 1)[1].lstrip("\n")
 
     await answer(update, context, greeting, reply_markup=main_menu_keyboard())
+    inline = mini_app_inline_keyboard()
+    if inline is not None:
+        await answer(
+            update,
+            context,
+            "یا مینی‌اپ را از این دکمه باز کن 👇",
+            reply_markup=inline,
+        )
     logger.info("User %s started the bot (new=%s)", getattr(tg_user, "id", "?"), is_new)
 
 

@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from telegram import KeyboardButton
 
-from app.bot.keyboards.main_menu import MENU_LABELS, MINI_APP, main_menu_keyboard
+from app.bot.keyboards.main_menu import (
+    MENU_LABELS,
+    MINI_APP,
+    main_menu_keyboard,
+    mini_app_inline_keyboard,
+)
 from app.config import reset_settings_cache
 
 
@@ -55,4 +60,24 @@ async def test_trailing_slash_is_normalized(monkeypatch, restore_settings):
     _set_webapp_url(monkeypatch, "https://bot.example.com/app/")
 
     button = main_menu_keyboard().keyboard[0][0]
+    assert button.web_app.url == "https://bot.example.com/app"
+
+
+async def test_inline_button_hidden_without_webapp_url(restore_settings):
+    assert mini_app_inline_keyboard() is None
+
+
+async def test_inline_button_hidden_for_http_url(monkeypatch, restore_settings):
+    _set_webapp_url(monkeypatch, "http://127.0.0.1:8000")
+    assert mini_app_inline_keyboard() is None
+
+
+async def test_inline_button_carries_the_web_app_url(monkeypatch, restore_settings):
+    _set_webapp_url(monkeypatch, "https://bot.example.com/app")
+
+    markup = mini_app_inline_keyboard()
+    assert markup is not None
+    button = markup.inline_keyboard[0][0]
+    assert button.text == MINI_APP
+    assert button.web_app is not None
     assert button.web_app.url == "https://bot.example.com/app"
