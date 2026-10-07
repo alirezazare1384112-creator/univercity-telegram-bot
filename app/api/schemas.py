@@ -27,6 +27,38 @@ class MeOut(BaseModel):
     university: str | None
     semester: str | None
     bio: str | None
+    is_admin: bool = False
+
+
+class AdminStatsOut(BaseModel):
+    users: int
+    active_users: int
+    admins: int
+    courses: int
+    grades: int
+    reminders: int
+    announcements: int
+    notes: int
+    links: int
+    events: int
+    schedules: int
+
+
+class AdminUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    telegram_id: int
+    username: str | None
+    first_name: str | None
+    last_name: str | None
+    is_active: bool
+
+
+class AdminUsersOut(BaseModel):
+    total: int
+    active: int
+    users: list[AdminUserOut]
 
 
 class DashboardCounts(BaseModel):

@@ -9,6 +9,7 @@ export interface Me {
   university: string | null;
   semester: string | null;
   bio: string | null;
+  is_admin: boolean;
 }
 
 export interface ProfileInput {
@@ -17,6 +18,35 @@ export interface ProfileInput {
   university: string | null;
   semester: string | null;
   bio: string | null;
+}
+
+export interface AdminStats {
+  users: number;
+  active_users: number;
+  admins: number;
+  courses: number;
+  grades: number;
+  reminders: number;
+  announcements: number;
+  notes: number;
+  links: number;
+  events: number;
+  schedules: number;
+}
+
+export interface AdminUser {
+  id: number;
+  telegram_id: number;
+  username: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  is_active: boolean;
+}
+
+export interface AdminUsers {
+  total: number;
+  active: number;
+  users: AdminUser[];
 }
 
 export interface DashboardCounts {

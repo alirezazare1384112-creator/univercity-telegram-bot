@@ -13,13 +13,15 @@ import hashlib
 import hmac
 import json
 import time
+from typing import Annotated
 from urllib.parse import parse_qsl
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from app.config import get_settings
 from app.database.database import get_session
 from app.database.models import User
+from app.database.repositories.admin_repository import AdminRepository
 from app.database.repositories.user_repository import UserRepository
 
 INIT_DATA_HEADER = "X-Telegram-Init-Data"
@@ -109,4 +111,13 @@ async def current_user(
             first_name=user_data.get("first_name"),
             last_name=user_data.get("last_name"),
         )
+    return user
+
+
+async def current_admin(user: Annotated[User, Depends(current_user)]) -> User:
+    """Dependency: the authenticated user must be an admin (403 otherwise)."""
+    async with get_session() as session:
+        allowed = await AdminRepository(session).is_admin(user.telegram_id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="دسترسی ادمین ندارید")
     return user

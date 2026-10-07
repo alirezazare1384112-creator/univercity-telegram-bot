@@ -1,4 +1,6 @@
 import type {
+  AdminStats,
+  AdminUsers,
   Announcement,
   CalendarEvent,
   CalendarEventInput,
@@ -146,4 +148,6 @@ export const api = {
   deleteLink: (id: number) =>
     request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }),
   updateMe: (payload: ProfileInput) => request<Me>("/api/me", jsonInit("PUT", payload)),
+  adminStats: () => request<AdminStats>("/api/admin/stats"),
+  adminUsers: (limit = 50) => request<AdminUsers>(`/api/admin/users?limit=${limit}`),
 };

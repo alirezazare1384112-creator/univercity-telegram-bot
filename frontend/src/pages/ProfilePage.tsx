@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -189,6 +190,14 @@ export default function ProfilePage() {
           حساب: <span dir="ltr">{user.username ? `@${user.username}` : user.telegram_id}</span>
         </p>
         <p>تمام داده‌ها فقط متعلق به شماست و در حساب تلگرامتان ذخیره می‌شود.</p>
+        {user.is_admin && (
+          <Link
+            to="/admin"
+            className="mt-2 block rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs font-bold text-blue-700 active:opacity-80"
+          >
+            🛠 ورود به پنل ادمین
+          </Link>
+        )}
       </div>
     </section>
   );
