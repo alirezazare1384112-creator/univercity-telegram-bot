@@ -133,3 +133,48 @@ export interface CalendarEventInput {
   description?: string | null;
   is_done?: boolean;
 }
+
+export type RepeatType = "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";
+
+export const REPEAT_LABELS: Record<RepeatType, string> = {
+  NONE: "بدون تکرار",
+  DAILY: "هر روز",
+  WEEKLY: "هر هفته",
+  MONTHLY: "هر ماه",
+};
+
+export const REPEAT_TYPES = Object.keys(REPEAT_LABELS) as RepeatType[];
+
+export type AlertOffset = "AT_TIME" | "HOURS_1" | "DAYS_1";
+
+export const ALERT_LABELS: Record<AlertOffset, string> = {
+  AT_TIME: "در زمان رویداد",
+  HOURS_1: "۱ ساعت قبل",
+  DAYS_1: "۱ روز قبل",
+};
+
+export const ALERT_OFFSETS = Object.keys(ALERT_LABELS) as AlertOffset[];
+
+export interface Reminder {
+  id: number;
+  title: string;
+  description: string | null;
+  course_id: number | null;
+  course_name: string | null;
+  local_datetime: string;
+  display: string;
+  repeat_type: RepeatType;
+  repeat_label: string;
+  is_active: boolean;
+  alert_offsets: AlertOffset[];
+}
+
+export interface ReminderInput {
+  title: string;
+  local_datetime: string;
+  description?: string | null;
+  course_id?: number | null;
+  repeat_type?: RepeatType;
+  is_active?: boolean;
+  alert_offsets?: AlertOffset[];
+}

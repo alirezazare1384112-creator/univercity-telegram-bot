@@ -10,6 +10,8 @@ import type {
   Me,
   Note,
   NoteInput,
+  Reminder,
+  ReminderInput,
   ScheduleInfo,
 } from "./types";
 import { getWebApp } from "./telegram";
@@ -120,4 +122,12 @@ export const api = {
     request<CalendarEvent>(`/api/calendar/${id}`, jsonInit("PUT", payload)),
   deleteEvent: (id: number) =>
     request<{ deleted: boolean }>(`/api/calendar/${id}`, { method: "DELETE" }),
+  reminders: (activeOnly = false) =>
+    request<Reminder[]>(`/api/reminders?active_only=${activeOnly}`),
+  createReminder: (payload: ReminderInput) =>
+    request<Reminder>("/api/reminders", jsonInit("POST", payload)),
+  updateReminder: (id: number, payload: ReminderInput) =>
+    request<Reminder>(`/api/reminders/${id}`, jsonInit("PUT", payload)),
+  deleteReminder: (id: number) =>
+    request<{ deleted: boolean }>(`/api/reminders/${id}`, { method: "DELETE" }),
 };

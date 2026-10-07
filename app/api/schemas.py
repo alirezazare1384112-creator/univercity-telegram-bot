@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MeOut(BaseModel):
@@ -249,3 +249,71 @@ class CalendarEventOut(BaseModel):
     date_label: str
     description: str | None
     is_done: bool
+
+
+class ReminderIn(BaseModel):
+    title: str
+    local_datetime: datetime
+    description: str | None = None
+    course_id: int | None = None
+    repeat_type: str = "NONE"
+    is_active: bool = True
+    alert_offsets: list[str] = Field(default_factory=lambda: ["AT_TIME"])
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("title is required")
+        if len(value) > 128:
+            raise ValueError("title is too long")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _empty_desc_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("repeat_type")
+    @classmethod
+    def _known_repeat(cls, value: str) -> str:
+        from app.database.models.reminder import REPEAT_TYPES
+
+        if value not in REPEAT_TYPES:
+            raise ValueError("unknown repeat_type")
+        return value
+
+    @field_validator("alert_offsets")
+    @classmethod
+    def _known_offsets(cls, value: list[str]) -> list[str]:
+        from app.database.models.reminder import ALERT_OFFSETS
+
+        if not value:
+            raise ValueError("at least one alert is required")
+        unknown = [offset for offset in value if offset not in ALERT_OFFSETS]
+        if unknown:
+            raise ValueError("unknown alert offset")
+        # keep order, drop duplicates
+        seen: list[str] = []
+        for offset in value:
+            if offset not in seen:
+                seen.append(offset)
+        return seen
+
+
+class ReminderOut(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    course_id: int | None
+    course_name: str | None
+    local_datetime: datetime
+    display: str
+    repeat_type: str
+    repeat_label: str
+    is_active: bool
+    alert_offsets: list[str]

@@ -11,6 +11,7 @@ import DashboardPage from "./pages/DashboardPage";
 import GradesPage from "./pages/GradesPage";
 import NotesPage from "./pages/NotesPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import RemindersPage from "./pages/RemindersPage";
 import SchedulePage from "./pages/SchedulePage";
 
 function BackButtonController() {
@@ -47,6 +48,7 @@ function Shell() {
           <Route path="/courses/:courseId/grades" element={<GradesPage />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/reminders" element={<RemindersPage />} />
           <Route path="/profile" element={<PlaceholderPage title="پروفایل" />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
