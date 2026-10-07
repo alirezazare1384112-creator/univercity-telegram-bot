@@ -8,9 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.auth import current_user
 from app.api.routers.courses import _own_course
-from app.api.schemas import CourseGradesOut, CourseOut, GradeItemIn, GradeItemOut, GradeTotals
+from app.api.schemas import (
+    CourseGradesOut,
+    CourseGradeSummary,
+    CourseOut,
+    GradeItemIn,
+    GradeItemOut,
+    GradesSummaryOut,
+    GradeTotals,
+)
 from app.database.database import get_session
 from app.database.models import User
+from app.database.repositories.course_repository import CourseRepository
 from app.database.repositories.grade_repository import GradeItemRepository
 
 router = APIRouter(prefix="/api", tags=["grades"])
@@ -27,6 +36,38 @@ async def _own_item(session, course_id: int, item_id: int, user: User):
 def _totals_view(total: float, maximum: float) -> GradeTotals:
     percent = round(total / maximum * 100, 1) if maximum else 0.0
     return GradeTotals(total=total, maximum=maximum, percent=percent)
+
+
+@router.get("/grades", response_model=GradesSummaryOut)
+async def read_grades_summary(
+    user: Annotated[User, Depends(current_user)],
+) -> GradesSummaryOut:
+    """All courses of the user with per-course totals plus the grand total."""
+    async with get_session() as session:
+        courses = await CourseRepository(session).list_by_user(user.id)
+        summary = await GradeItemRepository(session).summary_by_user(user.id)
+
+    rows: list[CourseGradeSummary] = []
+    grand_total = grand_maximum = 0.0
+    grand_items = 0
+    for course in courses:
+        count, total, maximum = summary.get(course.id, (0, 0.0, 0.0))
+        grand_total += total
+        grand_maximum += maximum
+        grand_items += count
+        rows.append(
+            CourseGradeSummary(
+                course_id=course.id,
+                name=course.name,
+                item_count=count,
+                totals=_totals_view(total, maximum),
+            )
+        )
+    return GradesSummaryOut(
+        courses=rows,
+        totals=_totals_view(grand_total, grand_maximum),
+        item_count=grand_items,
+    )
 
 
 @router.get("/courses/{course_id}/grades", response_model=CourseGradesOut)

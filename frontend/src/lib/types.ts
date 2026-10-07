@@ -56,6 +56,7 @@ export interface DashboardCounts {
   reminders: number;
   events_today: number;
   links: number;
+  grade_items: number;
 }
 
 export interface NextReminder {
@@ -128,6 +129,19 @@ export interface CourseGrades {
   course: Course;
   items: GradeItem[];
   totals: GradeTotals;
+}
+
+export interface CourseGradeSummary {
+  course_id: number;
+  name: string;
+  item_count: number;
+  totals: GradeTotals;
+}
+
+export interface GradesSummary {
+  courses: CourseGradeSummary[];
+  totals: GradeTotals;
+  item_count: number;
 }
 
 export interface GradeInput {

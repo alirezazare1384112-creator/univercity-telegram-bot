@@ -24,7 +24,7 @@ def sign_init_data(fields: dict[str, str], *, bot_token: str | None = None) -> s
     token = get_settings().bot_token if bot_token is None else bot_token
     pairs = sorted(fields.items())
     data_check_string = "\n".join(f"{key}={value}" for key, value in pairs)
-    secret_key = hmac.new(token.encode(), b"WebAppData", hashlib.sha256).digest()
+    secret_key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
     signature = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
     return urlencode([*pairs, ("hash", signature)])
 

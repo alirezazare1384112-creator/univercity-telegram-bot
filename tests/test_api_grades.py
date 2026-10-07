@@ -155,3 +155,60 @@ async def test_grades_require_auth(api_client):
     assert (
         await api_client.post("/api/courses/1/grades", json=_grade())
     ).status_code == 401
+
+
+# --- /api/grades summary (dashboard entry point) ------------------------
+
+
+async def test_grades_summary_lists_every_course_with_totals(api_client):
+    course_id = await _new_course(api_client)
+    await api_client.post(
+        f"/api/courses/{course_id}/grades",
+        headers=_headers(),
+        json=_grade(title="میان‌ترم", score=15, max_score=20),
+    )
+    await api_client.post(
+        f"/api/courses/{course_id}/grades",
+        headers=_headers(),
+        json=_grade(title="تمرین ۱", score=4, max_score=5, kind="HOMEWORK"),
+    )
+    empty = await api_client.post(
+        "/api/courses", headers=_headers(), json={"name": "فیزیک"}
+    )
+    empty_id = empty.json()["id"]
+
+    response = await api_client.get("/api/grades", headers=_headers())
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["item_count"] == 2
+    assert body["totals"] == {"total": 19.0, "maximum": 25.0, "percent": 76.0}
+
+    rows = {row["course_id"]: row for row in body["courses"]}
+    assert rows[course_id]["name"] == "ریاضی"
+    assert rows[course_id]["item_count"] == 2
+    assert rows[course_id]["totals"] == {"total": 19.0, "maximum": 25.0, "percent": 76.0}
+    assert rows[empty_id]["name"] == "فیزیک"
+    assert rows[empty_id]["item_count"] == 0
+    assert rows[empty_id]["totals"] == {"total": 0.0, "maximum": 0.0, "percent": 0.0}
+
+
+async def test_grades_summary_is_scoped_to_user(api_client):
+    await _new_course(api_client)  # user 111, no items
+    stranger = _headers(user_id=222)
+    other = await api_client.post(
+        "/api/courses", headers=stranger, json={"name": "دیگری"}
+    )
+    await api_client.post(
+        f"/api/courses/{other.json()['id']}/grades", headers=stranger, json=_grade()
+    )
+
+    response = await api_client.get("/api/grades", headers=_headers(user_id=111))
+    body = response.json()
+    assert body["item_count"] == 0
+    assert body["totals"] == {"total": 0.0, "maximum": 0.0, "percent": 0.0}
+    assert [row["name"] for row in body["courses"]] == ["ریاضی"]
+
+
+async def test_grades_summary_requires_auth(api_client):
+    assert (await api_client.get("/api/grades")).status_code == 401

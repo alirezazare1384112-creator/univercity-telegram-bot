@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import GradeItem
+from app.database.models import Course, GradeItem
 from app.database.models.grade import GRADE_KIND_OTHER
 
 
@@ -79,3 +79,32 @@ class GradeItemRepository:
         )
         result = await self._session.execute(stmt)
         return int(result.scalar_one())
+
+    async def count_for_user(self, user_id: int) -> int:
+        """Total grade items across every course of one user."""
+        stmt = (
+            select(func.count(GradeItem.id))
+            .join(Course, Course.id == GradeItem.course_id)
+            .where(Course.user_id == user_id)
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def summary_by_user(self, user_id: int) -> dict[int, tuple[int, float, float]]:
+        """Per-course ``(item_count, total, maximum)`` for all of a user's courses."""
+        stmt = (
+            select(
+                GradeItem.course_id,
+                func.count(GradeItem.id),
+                func.coalesce(func.sum(GradeItem.score), 0.0),
+                func.coalesce(func.sum(GradeItem.max_score), 0.0),
+            )
+            .join(Course, Course.id == GradeItem.course_id)
+            .where(Course.user_id == user_id)
+            .group_by(GradeItem.course_id)
+        )
+        result = await self._session.execute(stmt)
+        return {
+            int(row[0]): (int(row[1]), float(row[2]), float(row[3]))
+            for row in result.all()
+        }

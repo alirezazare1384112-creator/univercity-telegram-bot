@@ -90,7 +90,13 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard icon="📚" label="دروس" value={counts.courses} />
+        <StatCard icon="📚" label="دروس" value={counts.courses} to="/courses" />
+        <StatCard
+          icon="📝"
+          label="نمرات"
+          value={counts.grade_items}
+          to="/grades"
+        />
         <StatCard
           icon="📢"
           label="اطلاعیه‌ها"

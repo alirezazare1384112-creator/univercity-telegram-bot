@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from app.api.auth import INIT_DATA_HEADER
 from app.config import get_settings
-from app.database.models import CalendarEvent, Course, Reminder
+from app.database.models import CalendarEvent, Course, GradeItem, Reminder
 from app.database.repositories.user_repository import UserRepository
 from app.utils.datetime_utils import utc_to_local, utcnow_naive
 from tests.conftest import sign_init_data
@@ -46,10 +46,12 @@ async def test_dashboard_counts_and_user_isolation(api_client, db):
         owner, _ = await UserRepository(session).get_or_create_from_telegram(
             telegram_id=111, username="u111", first_name="سارا", last_name=None
         )
+        math = Course(user_id=owner.id, name="ریاضی")
+        physics = Course(user_id=owner.id, name="فیزیک")
         session.add_all(
             [
-                Course(user_id=owner.id, name="ریاضی"),
-                Course(user_id=owner.id, name="فیزیک"),
+                math,
+                physics,
                 CalendarEvent(user_id=owner.id, title="کنفرانس", event_date=today),
                 CalendarEvent(user_id=owner.id, title="دیروز", event_date=today - timedelta(days=1)),
                 Reminder(
@@ -69,6 +71,10 @@ async def test_dashboard_counts_and_user_isolation(api_client, db):
                 ),
             ]
         )
+        await session.flush()
+        session.add(
+            GradeItem(course_id=math.id, title="میان‌ترم", score=15.0, max_score=20.0)
+        )
         await session.commit()
 
     response = await api_client.get("/api/dashboard", headers=_headers())
@@ -80,6 +86,7 @@ async def test_dashboard_counts_and_user_isolation(api_client, db):
     assert data["counts"]["reminders"] == 3
     assert data["counts"]["announcements"] == 0
     assert data["counts"]["notes"] == 0
+    assert data["counts"]["grade_items"] == 1
     assert data["schedule"] is False
     assert data["next_reminder"]["title"] == "سریع‌ترین"
     assert "/" in data["today"]
@@ -92,4 +99,5 @@ async def test_dashboard_counts_and_user_isolation(api_client, db):
     assert other_data["counts"]["courses"] == 0
     assert other_data["counts"]["events_today"] == 0
     assert other_data["counts"]["reminders"] == 0
+    assert other_data["counts"]["grade_items"] == 0
     assert other_data["next_reminder"] is None

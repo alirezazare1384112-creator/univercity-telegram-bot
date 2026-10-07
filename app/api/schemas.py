@@ -68,6 +68,7 @@ class DashboardCounts(BaseModel):
     reminders: int
     events_today: int
     links: int
+    grade_items: int
 
 
 class NextReminder(BaseModel):
@@ -211,6 +212,21 @@ class CourseGradesOut(BaseModel):
     course: CourseOut
     items: list[GradeItemOut]
     totals: GradeTotals
+
+
+class CourseGradeSummary(BaseModel):
+    """One row of the cross-course grades summary page."""
+
+    course_id: int
+    name: str
+    item_count: int
+    totals: GradeTotals
+
+
+class GradesSummaryOut(BaseModel):
+    courses: list[CourseGradeSummary]
+    totals: GradeTotals
+    item_count: int
 
 
 class NoteIn(BaseModel):

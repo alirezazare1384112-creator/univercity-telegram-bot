@@ -11,6 +11,7 @@ import ConnectPage from "./pages/ConnectPage";
 import CoursesPage from "./pages/CoursesPage";
 import DashboardPage from "./pages/DashboardPage";
 import GradesPage from "./pages/GradesPage";
+import GradesSummaryPage from "./pages/GradesSummaryPage";
 import LinksPage from "./pages/LinksPage";
 import NotesPage from "./pages/NotesPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -49,6 +50,7 @@ function Shell() {
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/courses" element={<CoursesPage />} />
           <Route path="/courses/:courseId/grades" element={<GradesPage />} />
+          <Route path="/grades" element={<GradesSummaryPage />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/reminders" element={<RemindersPage />} />

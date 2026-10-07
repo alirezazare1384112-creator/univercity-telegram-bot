@@ -1,7 +1,7 @@
 """Telegram Mini App authentication (initData verification).
 
 Telegram signs the ``initData`` query string with the bot token:
-``HMAC_SHA256(key=bot_token, msg="WebAppData")`` is the secret key, then
+``HMAC_SHA256(key="WebAppData", msg=bot_token)`` is the secret key, then
 ``HMAC_SHA256(secret_key, data_check_string)`` is the ``hash`` field.
 Everything is checked server side; the frontend never proves anything
 on its own.
@@ -52,7 +52,7 @@ def verify_init_data(
     check_pairs = [(key, value) for key, value in pairs if key != "hash"]
     data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(check_pairs))
 
-    secret_key = hmac.new(bot_token.encode(), b"WebAppData", hashlib.sha256).digest()
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
     expected = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, hashes[0]):
         raise InitDataError("signature mismatch")

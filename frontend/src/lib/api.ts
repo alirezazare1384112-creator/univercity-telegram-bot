@@ -10,6 +10,7 @@ import type {
   Dashboard,
   GradeInput,
   GradeItem,
+  GradesSummary,
   LinkInput,
   Me,
   Note,
@@ -95,6 +96,7 @@ export const api = {
     request<{ deleted: boolean }>(`/api/courses/${id}`, { method: "DELETE" }),
   courseGrades: (courseId: number) =>
     request<CourseGrades>(`/api/courses/${courseId}/grades`),
+  gradesSummary: () => request<GradesSummary>("/api/grades"),
   createGrade: (courseId: number, payload: GradeInput) =>
     request<GradeItem>(`/api/courses/${courseId}/grades`, jsonInit("POST", payload)),
   updateGrade: (courseId: number, itemId: number, payload: GradeInput) =>
