@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from telegram.ext import Application
 
@@ -33,6 +33,29 @@ _DEV_ORIGINS = (
     "http://127.0.0.1:4173",
 )
 
+# Uploads are capped at 20 MB per file; anything far above that never reaches
+# the route handlers (multipart bodies are buffered in memory before parsing).
+_MAX_BODY_BYTES = 25 * 1024 * 1024
+
+
+def _install_security(api: FastAPI) -> None:
+    """Body-size cap plus hardening headers for every response.
+
+    No X-Frame-Options: Telegram Web opens Mini Apps inside an iframe on
+    web.telegram.org, so framing must stay allowed.
+    """
+
+    @api.middleware("http")
+    async def security(request: Request, call_next) -> object:
+        if request.method in ("POST", "PUT", "PATCH"):
+            length = request.headers.get("content-length", "")
+            if length.isdigit() and int(length) > _MAX_BODY_BYTES:
+                return JSONResponse({"detail": "payload too large"}, status_code=413)
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        return response
+
 
 def create_api(application: Application | None = None) -> FastAPI:
     """Build the FastAPI app.
@@ -49,6 +72,7 @@ def create_api(application: Application | None = None) -> FastAPI:
         allow_headers=[INIT_DATA_HEADER],
         allow_methods=["GET", "PUT", "POST", "DELETE", "OPTIONS"],
     )
+    _install_security(api)
 
     api.include_router(me.router)
     api.include_router(dashboard.router)
