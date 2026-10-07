@@ -163,6 +163,10 @@ def create_api(application: Application | None = None) -> FastAPI:
             candidate = (dist / full_path).resolve()
             if full_path and candidate.is_relative_to(dist) and candidate.is_file():
                 return FileResponse(candidate)
-            return FileResponse(dist / "index.html")
+            # no-store: Telegram webviews must revalidate the shell, otherwise
+            # a stale index.html keeps pointing at the previous script bundle.
+            return FileResponse(
+                dist / "index.html", headers={"Cache-Control": "no-store"}
+            )
 
     return api
