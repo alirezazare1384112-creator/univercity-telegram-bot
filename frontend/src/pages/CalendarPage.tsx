@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
+import {
+  J_MONTHS,
+  daysInMonth,
+  isoToJalali,
+  jalaliToIso,
+  todayIso,
+  todayJalali,
+} from "../lib/jalali";
+import type { JalaliDate } from "../lib/jalali";
 import { getWebApp } from "../lib/telegram";
 import type { CalendarEvent, CalendarEventInput } from "../lib/types";
 
@@ -35,6 +44,10 @@ function haptic(type: "success" | "error"): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "ارتباط با سرور برقرار نشد";
+}
+
+function fa(n: number): string {
+  return n.toLocaleString("fa-IR");
 }
 
 function toInput(event: CalendarEvent): CalendarEventInput {
@@ -75,7 +88,7 @@ export default function CalendarPage() {
 
   const openCreate = () => {
     setBanner(null);
-    setForm({ ...EMPTY_FORM, event_date: new Date().toISOString().slice(0, 10) });
+    setForm({ ...EMPTY_FORM, event_date: todayIso() });
   };
 
   const openEdit = (event: CalendarEvent) => {
@@ -88,6 +101,15 @@ export default function CalendarPage() {
       description: event.description ?? "",
       is_done: event.is_done,
     });
+  };
+
+  const setDatePart = (part: "jy" | "jm" | "jd", value: number) => {
+    if (!form) return;
+    const base: JalaliDate = form.event_date ? isoToJalali(form.event_date) : todayJalali();
+    const next: JalaliDate = { ...base, [part]: value };
+    const dim = daysInMonth(next.jy, next.jm);
+    if (next.jd > dim) next.jd = dim;
+    setForm({ ...form, event_date: jalaliToIso(next) });
   };
 
   const save = async () => {
@@ -168,6 +190,12 @@ export default function CalendarPage() {
     "w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm dark:bg-black/20";
   const events = tab === "pending" ? page.pending : page.done;
 
+  const j: JalaliDate = form?.event_date ? isoToJalali(form.event_date) : todayJalali();
+  const nowJ = todayJalali();
+  const years: number[] = [];
+  for (let y = Math.min(nowJ.jy - 1, j.jy); y <= Math.max(nowJ.jy + 3, j.jy); y++) years.push(y);
+  const dayCount = daysInMonth(j.jy, j.jm);
+
   const groups: { label: string; events: CalendarEvent[] }[] = [];
   for (const event of events) {
     const last = groups.at(-1);
@@ -203,20 +231,50 @@ export default function CalendarPage() {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="date"
+          <div className="grid grid-cols-3 gap-2">
+            <select
               className={field}
-              value={form.event_date}
-              onChange={(e) => setForm({ ...form, event_date: e.target.value })}
-            />
-            <input
-              type="time"
+              value={j.jy}
+              onChange={(e) => setDatePart("jy", Number(e.target.value))}
+              aria-label="سال"
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {fa(y)}
+                </option>
+              ))}
+            </select>
+            <select
               className={field}
-              value={form.event_time}
-              onChange={(e) => setForm({ ...form, event_time: e.target.value })}
-            />
+              value={j.jm}
+              onChange={(e) => setDatePart("jm", Number(e.target.value))}
+              aria-label="ماه"
+            >
+              {J_MONTHS.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <select
+              className={field}
+              value={j.jd}
+              onChange={(e) => setDatePart("jd", Number(e.target.value))}
+              aria-label="روز"
+            >
+              {Array.from({ length: dayCount }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {fa(d)}
+                </option>
+              ))}
+            </select>
           </div>
+          <input
+            type="time"
+            className={field}
+            value={form.event_time}
+            onChange={(e) => setForm({ ...form, event_time: e.target.value })}
+          />
           <p className="text-[11px] opacity-60">ساعت را خالی بگذارید برای رویداد تمام‌روز.</p>
           <textarea
             className={`${field} min-h-16`}
