@@ -151,6 +151,9 @@ async def _serve(settings: Settings) -> None:
     await application.initialize()
     await application.updater.start_polling(drop_pending_updates=True)
     await application.start()
+    # PTB only runs post_init inside run_polling(); _serve() drives the
+    # lifecycle manually, so the scheduler must be started here explicitly.
+    await _post_init(application)
 
     server = uvicorn.Server(
         uvicorn.Config(
@@ -165,6 +168,7 @@ async def _serve(settings: Settings) -> None:
     finally:
         await application.updater.stop()
         await application.stop()
+        await _post_shutdown(application)
         await application.shutdown()
 
 

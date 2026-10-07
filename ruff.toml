@@ -26,3 +26,8 @@ ignore = [
     "RUF002",
     "RUF003",
 ]
+
+[lint.per-file-ignores]
+# Live-test scripts boot-strapp the project root onto sys.path before
+# importing app.*, which is a legitimate import after code.
+"scripts/*" = ["E402"]
