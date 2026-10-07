@@ -1,22 +1,24 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "./components/BottomNav";
 import Spinner from "./components/Spinner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { getWebApp } from "./lib/telegram";
-import AdminPage from "./pages/AdminPage";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import CalendarPage from "./pages/CalendarPage";
+// Eager: the auth gate and the landing route render before the router.
 import ConnectPage from "./pages/ConnectPage";
-import CoursesPage from "./pages/CoursesPage";
 import DashboardPage from "./pages/DashboardPage";
-import GradesPage from "./pages/GradesPage";
-import GradesSummaryPage from "./pages/GradesSummaryPage";
-import LinksPage from "./pages/LinksPage";
-import NotesPage from "./pages/NotesPage";
-import ProfilePage from "./pages/ProfilePage";
-import RemindersPage from "./pages/RemindersPage";
-import SchedulePage from "./pages/SchedulePage";
+// Lazy: every other page ships as its own chunk, loaded on first navigation.
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const CoursesPage = lazy(() => import("./pages/CoursesPage"));
+const GradesPage = lazy(() => import("./pages/GradesPage"));
+const GradesSummaryPage = lazy(() => import("./pages/GradesSummaryPage"));
+const LinksPage = lazy(() => import("./pages/LinksPage"));
+const NotesPage = lazy(() => import("./pages/NotesPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const RemindersPage = lazy(() => import("./pages/RemindersPage"));
+const SchedulePage = lazy(() => import("./pages/SchedulePage"));
 
 function BackButtonController() {
   const navigate = useNavigate();
@@ -45,21 +47,23 @@ function Shell() {
     <div className="mx-auto flex min-h-full w-full max-w-md flex-col">
       <BackButtonController />
       <main className="flex-1 p-4 pb-24">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/schedule" element={<SchedulePage />} />
-          <Route path="/courses" element={<CoursesPage />} />
-          <Route path="/courses/:courseId/grades" element={<GradesPage />} />
-          <Route path="/grades" element={<GradesSummaryPage />} />
-          <Route path="/notes" element={<NotesPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/reminders" element={<RemindersPage />} />
-          <Route path="/announcements" element={<AnnouncementsPage />} />
-          <Route path="/links" element={<LinksPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<Spinner />}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/courses/:courseId/grades" element={<GradesPage />} />
+            <Route path="/grades" element={<GradesSummaryPage />} />
+            <Route path="/notes" element={<NotesPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/reminders" element={<RemindersPage />} />
+            <Route path="/announcements" element={<AnnouncementsPage />} />
+            <Route path="/links" element={<LinksPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
       <BottomNav />
     </div>

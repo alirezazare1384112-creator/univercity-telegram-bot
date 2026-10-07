@@ -60,6 +60,21 @@ class ReminderRepository:
         result = await self._session.execute(stmt)
         return int(result.scalar_one())
 
+    async def next_active(self, user_id: int, not_before: datetime) -> Reminder | None:
+        """Soonest active reminder at/after ``not_before`` — one indexed row."""
+        stmt = (
+            select(Reminder)
+            .where(
+                Reminder.user_id == user_id,
+                Reminder.is_active.is_(True),
+                Reminder.reminder_datetime >= not_before,
+            )
+            .order_by(Reminder.reminder_datetime)
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
 
 class ReminderNotificationRepository:
     def __init__(self, session: AsyncSession) -> None:

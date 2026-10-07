@@ -10,7 +10,9 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
 from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
@@ -110,6 +112,22 @@ def _install_security(api: FastAPI) -> None:
         return response
 
 
+class _ImmutableStaticFiles(StaticFiles):
+    """StaticFiles that let browsers cache hashed bundles for a year.
+
+    Every file under /assets carries a content hash in its name (Vite), so a
+    new build changes the URL and the old copy may be cached forever; the
+    SPA shell (index.html) is served by the route below with ``no-store``.
+    """
+
+    def file_response(
+        self, full_path, stat_result, scope, status_code: int = 200
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 def create_api(application: Application | None = None) -> FastAPI:
     """Build the FastAPI app.
 
@@ -131,6 +149,10 @@ def create_api(application: Application | None = None) -> FastAPI:
     # headers also land on rate-limited (429) responses.
     _install_rate_limit(api)
     _install_security(api)
+    # Outermost of all: gzips the JS/CSS bundles (337 KB -> ~97 KB on the
+    # wire) plus API JSON. Bodies >= 128 KB are compressed off the event
+    # loop (starlette's thread_minimum_size).
+    api.add_middleware(GZipMiddleware, compresslevel=6)
 
     api.include_router(me.router)
     api.include_router(dashboard.router)
@@ -154,7 +176,7 @@ def create_api(application: Application | None = None) -> FastAPI:
     if dist.is_dir():
         assets = dist / "assets"
         if assets.is_dir():
-            api.mount("/assets", StaticFiles(directory=assets), name="assets")
+            api.mount("/assets", _ImmutableStaticFiles(directory=assets), name="assets")
 
         @api.get("/{full_path:path}", include_in_schema=False)
         async def spa(full_path: str) -> FileResponse:

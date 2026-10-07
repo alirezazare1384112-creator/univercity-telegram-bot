@@ -37,3 +37,42 @@ async def test_path_traversal_cannot_read_python_sources(api_client):
     response = await api_client.get("/%2e%2e/app/api/auth.py")
     assert "INIT_DATA_HEADER" not in response.text
     assert "verify_init_data" not in response.text
+
+
+def _first_asset(suffix: str) -> Path | None:
+    assets = DIST / "assets"
+    if not assets.is_dir():
+        return None
+    return next(assets.glob(f"*{suffix}"), None)
+
+
+@pytest.mark.skipif(not HAS_BUILD, reason="frontend/dist not built")
+async def test_index_is_never_cached(api_client):
+    """Telegram webviews must revalidate the shell to see new bundles."""
+    response = await api_client.get("/")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.skipif(not HAS_BUILD, reason="frontend/dist not built")
+async def test_hashed_assets_are_immutable(api_client):
+    js = _first_asset(".js")
+    if js is None:
+        pytest.skip("no built js asset")
+    response = await api_client.get(f"/assets/{js.name}")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+@pytest.mark.skipif(not HAS_BUILD, reason="frontend/dist not built")
+async def test_assets_are_gzipped_when_accepted(api_client):
+    js = _first_asset(".js")
+    if js is None:
+        pytest.skip("no built js asset")
+    response = await api_client.get(
+        f"/assets/{js.name}", headers={"Accept-Encoding": "gzip"}
+    )
+    assert response.status_code == 200
+    assert response.headers["content-encoding"] == "gzip"
+    # httpx transparently inflates the body for assertions.
+    assert len(response.content) > 500
