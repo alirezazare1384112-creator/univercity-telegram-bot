@@ -8,12 +8,14 @@ import type {
   Dashboard,
   GradeInput,
   GradeItem,
+  LinkInput,
   Me,
   Note,
   NoteInput,
   Reminder,
   ReminderInput,
   ScheduleInfo,
+  UniversityLink,
 } from "./types";
 import { getWebApp } from "./telegram";
 
@@ -135,4 +137,11 @@ export const api = {
   announcementFile: (id: number) => requestBlob(`/api/announcements/${id}/file`),
   deleteAnnouncement: (id: number) =>
     request<{ deleted: boolean }>(`/api/announcements/${id}`, { method: "DELETE" }),
+  links: () => request<UniversityLink[]>("/api/links"),
+  createLink: (payload: LinkInput) =>
+    request<UniversityLink>("/api/links", jsonInit("POST", payload)),
+  updateLink: (id: number, payload: LinkInput) =>
+    request<UniversityLink>(`/api/links/${id}`, jsonInit("PUT", payload)),
+  deleteLink: (id: number) =>
+    request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }),
 };

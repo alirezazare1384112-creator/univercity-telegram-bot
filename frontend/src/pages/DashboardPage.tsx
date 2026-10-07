@@ -105,7 +105,7 @@ export default function DashboardPage() {
           to="/calendar"
         />
         <StatCard icon="📖" label="جزوه‌ها" value={counts.notes} to="/notes" />
-        <StatCard icon="🔗" label="لینک‌ها" value={counts.links} />
+        <StatCard icon="🔗" label="لینک‌ها" value={counts.links} to="/links" />
       </section>
 
       <section className="rounded-2xl bg-black/5 p-4">

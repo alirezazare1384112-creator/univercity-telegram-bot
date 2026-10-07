@@ -189,3 +189,16 @@ export interface Announcement {
   created_at: string;
   display: string;
 }
+
+export interface UniversityLink {
+  id: number;
+  title: string;
+  url: string;
+  description: string | null;
+}
+
+export interface LinkInput {
+  title: string;
+  url: string;
+  description?: string | null;
+}

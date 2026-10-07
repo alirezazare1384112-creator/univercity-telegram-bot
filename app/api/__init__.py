@@ -13,6 +13,7 @@ from app.api.routers import (
     courses,
     dashboard,
     grades,
+    links,
     me,
     notes,
     reminders,
@@ -53,6 +54,7 @@ def create_api(application: Application | None = None) -> FastAPI:
     api.include_router(calendar.router)
     api.include_router(reminders.router)
     api.include_router(announcements.router)
+    api.include_router(links.router)
 
     @api.get("/api/health")
     async def health() -> dict[str, str]:
