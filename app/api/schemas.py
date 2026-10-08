@@ -263,6 +263,13 @@ class NoteOut(BaseModel):
     file_name: str | None
 
 
+class FileTokenOut(BaseModel):
+    """Signed preview URL payload for ``<img>``/``<iframe>`` (header-less GET)."""
+
+    token: str
+    media_type: str
+
+
 class CalendarEventIn(BaseModel):
     title: str
     event_date: date

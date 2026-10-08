@@ -110,6 +110,14 @@ def deterministic_settings(monkeypatch):
     reset_settings_cache()
 
 
+@pytest.fixture(autouse=True)
+def clear_telegram_file_cache():
+    """Downloads are LRU-cached in-process; keep expectations per test fresh."""
+    from app.api.files import clear_file_cache
+
+    clear_file_cache()
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

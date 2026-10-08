@@ -78,21 +78,16 @@ def parse_init_user(fields: dict[str, str]) -> dict:
     if not raw:
         raise InitDataError("missing user")
     try:
-        data = json.loads(raw)
+        user_data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise InitDataError("invalid user json") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("id"), int):
+    if not isinstance(user_data, dict) or not isinstance(user_data.get("id"), int):
         raise InitDataError("invalid user")
-    return data
+    return user_data
 
 
-async def current_user(
-    init_data: str | None = Header(default=None, alias=INIT_DATA_HEADER),
-) -> User:
-    """FastAPI dependency: verify the header and return the shared User row."""
-    if not init_data:
-        raise HTTPException(status_code=401, detail="missing init data")
-
+async def user_from_init_data(init_data: str) -> User:
+    """Verify an initData string and return the shared User row."""
     settings = get_settings()
     try:
         fields = verify_init_data(
@@ -112,6 +107,61 @@ async def current_user(
             last_name=user_data.get("last_name"),
         )
     return user
+
+
+# Signed URLs for file previews (<img>/<iframe> cannot send headers).
+FILE_TOKEN_TTL_SECONDS = 3600
+
+
+def _file_signature(user_id: int, note_id: int, expires: int, *, bot_token: str) -> str:
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    message = f"file:{note_id}:{user_id}:{expires}".encode()
+    return hmac.new(secret_key, message, hashlib.sha256).hexdigest()[:32]
+
+
+def sign_file_token(user_id: int, note_id: int, expires: int, *, bot_token: str) -> str:
+    """Sign ``{user}.{expires}.{sig}`` authorising one note download.
+
+    Reuses the initData secret key; the note id is inside the signature, so
+    a token minted for one file can never unlock another.
+    """
+    signature = _file_signature(user_id, note_id, expires, bot_token=bot_token)
+    return f"{user_id}.{expires}.{signature}"
+
+
+def verify_file_token(
+    token: str,
+    note_id: int,
+    *,
+    bot_token: str,
+    now_ts: int | None = None,
+) -> int | None:
+    """Return the issuing user id, or ``None`` for invalid/expired tokens."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    user_part, expires_part, signature = parts
+    try:
+        user_id = int(user_part)
+        expires = int(expires_part)
+    except ValueError:
+        return None
+    now = now_ts if now_ts is not None else int(time.time())
+    if now > expires:
+        return None
+    expected = _file_signature(user_id, note_id, expires, bot_token=bot_token)
+    if not hmac.compare_digest(expected, signature):
+        return None
+    return user_id
+
+
+async def current_user(
+    init_data: str | None = Header(default=None, alias=INIT_DATA_HEADER),
+) -> User:
+    """FastAPI dependency: verify the header and return the shared User row."""
+    if not init_data:
+        raise HTTPException(status_code=401, detail="missing init data")
+    return await user_from_init_data(init_data)
 
 
 async def current_admin(user: Annotated[User, Depends(current_user)]) -> User:

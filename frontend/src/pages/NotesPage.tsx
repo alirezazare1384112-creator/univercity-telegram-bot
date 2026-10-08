@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
@@ -20,8 +20,9 @@ interface FormState {
 }
 
 interface Preview {
+  noteId: number;
   url: string;
-  type: string;
+  kind: "image" | "pdf" | "other";
 }
 
 const EMPTY_FORM: FormState = {
@@ -47,10 +48,9 @@ export default function NotesPage() {
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
-  const [previews, setPreviews] = useState<Record<number, Preview>>({});
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<number | null>(null);
-  const previewsRef = useRef(previews);
-  previewsRef.current = previews;
+  const [mediaReady, setMediaReady] = useState(false);
 
   const load = useCallback(async () => {
     setPage({ kind: "loading" });
@@ -66,15 +66,6 @@ export default function NotesPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const current = previewsRef;
-    return () => {
-      for (const preview of Object.values(current.current)) {
-        URL.revokeObjectURL(preview.url);
-      }
-    };
-  }, []);
 
   const openCreate = () => {
     setBanner(null);
@@ -124,9 +115,16 @@ export default function NotesPage() {
     }
   };
 
+  const closePreview = () => {
+    // Dropping the element lets the WebView release the decoded image/PDF.
+    setPreview(null);
+    setMediaReady(false);
+  };
+
   const remove = async (id: number) => {
     try {
       await api.deleteNote(id);
+      if (preview?.noteId === id) closePreview();
       haptic("success");
       setConfirmId(null);
       await load();
@@ -137,12 +135,21 @@ export default function NotesPage() {
   };
 
   const showPreview = async (note: Note) => {
-    if (previews[note.id] || loadingPreview === note.id) return;
+    if (loadingPreview !== null) return;
     setLoadingPreview(note.id);
+    setMediaReady(false);
     try {
-      const blob = await api.noteFile(note.id);
-      const url = URL.createObjectURL(blob);
-      setPreviews((prev) => ({ ...prev, [note.id]: { url, type: blob.type } }));
+      const { token, media_type } = await api.noteFileToken(note.id);
+      const kind: Preview["kind"] = media_type.startsWith("image/")
+        ? "image"
+        : media_type === "application/pdf"
+          ? "pdf"
+          : "other";
+      setPreview({
+        noteId: note.id,
+        url: `/api/notes/${note.id}/file?t=${encodeURIComponent(token)}`,
+        kind,
+      });
       haptic("success");
     } catch (error: unknown) {
       setBanner(errorMessage(error));
@@ -323,30 +330,78 @@ export default function NotesPage() {
                 </p>
               )}
 
-              {previews[note.id] &&
-                (previews[note.id].type.startsWith("image/") ? (
-                  <img
-                    src={previews[note.id].url}
-                    alt={note.title}
-                    className="mt-3 max-h-64 w-full rounded-xl object-contain"
-                  />
-                ) : (
-                  <iframe
-                    title={note.title}
-                    src={previews[note.id].url}
-                    className="mt-3 h-64 w-full rounded-xl border-0 bg-white"
-                  />
-                ))}
+              {preview?.noteId === note.id && (
+                <div className="mt-3">
+                  {preview.kind === "image" && !mediaReady && (
+                    <p className="rounded-xl bg-black/5 py-6 text-center text-xs opacity-60">
+                      در حال بارگذاری تصویر…
+                    </p>
+                  )}
+                  {preview.kind === "image" && (
+                    <img
+                      src={preview.url}
+                      alt={note.title}
+                      decoding="async"
+                      onLoad={() => setMediaReady(true)}
+                      onError={() => {
+                        setBanner("نمایش تصویر ممکن نشد؛ فایل را دانلود کنید.");
+                        closePreview();
+                      }}
+                      className={`max-h-80 w-full rounded-xl object-contain ${
+                        mediaReady ? "" : "hidden"
+                      }`}
+                    />
+                  )}
+                  {preview.kind === "pdf" && (
+                    <>
+                      <iframe
+                        title={note.title}
+                        src={preview.url}
+                        className="h-72 w-full rounded-xl border-0 bg-white"
+                      />
+                      <a
+                        href={preview.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 block rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs font-bold text-blue-700"
+                      >
+                        ⬇️ باز کردن در برنامهٔ PDF / دانلود
+                      </a>
+                    </>
+                  )}
+                  {preview.kind === "other" && (
+                    <a
+                      href={preview.url}
+                      download={note.file_name ?? "file"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs font-bold text-blue-700"
+                    >
+                      ⬇️ دانلود {note.file_name ?? "فایل"}
+                    </a>
+                  )}
+                </div>
+              )}
 
               <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void showPreview(note)}
-                  disabled={loadingPreview === note.id}
-                  className="flex-1 rounded-xl bg-blue-600/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80 disabled:opacity-60"
-                >
-                  {loadingPreview === note.id ? "در حال باز کردن…" : "👁 مشاهده"}
-                </button>
+                {preview?.noteId === note.id ? (
+                  <button
+                    type="button"
+                    onClick={closePreview}
+                    className="flex-1 rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                  >
+                    ✕ بستن پیش‌نمایش
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void showPreview(note)}
+                    disabled={loadingPreview !== null}
+                    className="flex-1 rounded-xl bg-blue-600/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80 disabled:opacity-60"
+                  >
+                    {loadingPreview === note.id ? "در حال باز کردن…" : "👁 مشاهده"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => openEdit(note)}

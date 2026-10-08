@@ -151,8 +151,28 @@ def create_api(application: Application | None = None) -> FastAPI:
     _install_security(api)
     # Outermost of all: gzips the JS/CSS bundles (337 KB -> ~97 KB on the
     # wire) plus API JSON. Bodies >= 128 KB are compressed off the event
-    # loop (starlette's thread_minimum_size).
-    api.add_middleware(GZipMiddleware, compresslevel=6)
+    # loop (starlette's thread_minimum_size). PDFs/zips are already
+    # compressed, so gzip there would only burn CPU.
+    api.add_middleware(
+        GZipMiddleware,
+        compresslevel=6,
+        exclude_content_types=(
+            "application/gzip",
+            "application/x-gzip",
+            "application/zip",
+            "audio/*",
+            "font/woff",
+            "font/woff2",
+            "image/avif",
+            "image/gif",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "text/event-stream",
+            "video/*",
+            "application/pdf",
+        ),
+    )
 
     api.include_router(me.router)
     api.include_router(dashboard.router)

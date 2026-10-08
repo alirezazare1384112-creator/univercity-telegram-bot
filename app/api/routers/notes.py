@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from app.api.auth import current_user
-from app.api.files import bot_of, check_size, fetch_telegram_file, send_and_cleanup
+from app.api.auth import (
+    FILE_TOKEN_TTL_SECONDS,
+    INIT_DATA_HEADER,
+    current_user,
+    sign_file_token,
+    user_from_init_data,
+    verify_file_token,
+)
+from app.api.files import bot_of, check_size, fetch_telegram_file, safe_media_type, send_and_cleanup
 from app.api.routers.courses import _own_course
-from app.api.schemas import NoteIn, NoteOut
+from app.api.schemas import FileTokenOut, NoteIn, NoteOut
+from app.config import get_settings
 from app.database.database import get_session
 from app.database.models import Note, User
+from app.database.models.note import NOTE_PHOTO
 from app.database.repositories.course_repository import CourseRepository
 from app.database.repositories.note_repository import NoteRepository
 
@@ -37,6 +48,17 @@ def _note_out(note: Note, course_names: dict[int, str]) -> NoteOut:
         file_type=note.file_type,
         file_name=note.file_name,
     )
+
+
+def _media_type_for(note: Note) -> str:
+    """Best-effort content type without downloading the file.
+
+    Photos are always JPEG after Telegram's processing; everything else is
+    guessed from the uploaded filename.
+    """
+    if note.file_type == NOTE_PHOTO:
+        return "image/jpeg"
+    return safe_media_type(mimetypes.guess_type(note.file_name or "")[0])
 
 
 @router.get("/notes", response_model=list[NoteOut])
@@ -94,23 +116,57 @@ async def create_note(
     return _note_out(note, names)
 
 
-@router.get("/notes/{note_id}/file")
-async def download_note(
+@router.post("/notes/{note_id}/file-token", response_model=FileTokenOut)
+async def create_note_file_token(
     note_id: int,
-    request: Request,
     user: Annotated[User, Depends(current_user)],
-) -> Response:
+) -> FileTokenOut:
+    """Mint a signed, one-hour URL so ``<img>``/``<iframe>`` can fetch the file.
+
+    Browser elements cannot attach the initData header; the token is bound
+    to one note + one user and never authorises anything else.
+    """
     async with get_session() as session:
         note = await NoteRepository(session).get(note_id, user.id)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
+    expires = int(time.time()) + FILE_TOKEN_TTL_SECONDS
+    token = sign_file_token(user.id, note_id, expires, bot_token=get_settings().bot_token)
+    return FileTokenOut(token=token, media_type=_media_type_for(note))
+
+
+@router.get("/notes/{note_id}/file")
+async def download_note(
+    note_id: int,
+    request: Request,
+    t: Annotated[str | None, Query(max_length=256)] = None,
+) -> Response:
+    """Serve the file with either the initData header or a signed ``?t=`` token.
+
+    Responses carry an ETag: repeat views revalidate for a cheap 304 instead
+    of re-downloading from Telegram.
+    """
+    if t is not None:
+        user_id = verify_file_token(t, note_id, bot_token=get_settings().bot_token)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="invalid or expired file token")
+    elif init_data := request.headers.get(INIT_DATA_HEADER):
+        user_id = (await user_from_init_data(init_data)).id
+    else:
+        raise HTTPException(status_code=401, detail="missing init data")
+
+    async with get_session() as session:
+        note = await NoteRepository(session).get(note_id, user_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+
+    etag = f'"{note.file_unique_id or note.id}"'
+    headers = {"Cache-Control": "private, max-age=3600", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
 
     data, media_type = await fetch_telegram_file(bot_of(request), note.file_id)
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={"Cache-Control": "private, max-age=300"},
-    )
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 @router.put("/notes/{note_id}", response_model=NoteOut)

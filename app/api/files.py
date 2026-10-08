@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import contextlib
 import mimetypes
+import time
+from collections import OrderedDict
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -24,6 +26,35 @@ MAX_FILE_BYTES = 20 * 1024 * 1024
 
 # Types that must never be served as active content from our origin.
 _UNSAFE_MIME_PREFIXES = ("text/html", "application/xhtml", "image/svg")
+
+# In-process LRU for downloads: previews re-serve the same files all day,
+# and every cache miss would otherwise cost a Telegram round trip.
+_CACHE_TTL_SECONDS = 3600
+_CACHE_MAX_BYTES = 64 * 1024 * 1024
+
+_file_cache: OrderedDict[str, tuple[float, bytes, str]] = OrderedDict()
+_file_cache_bytes = 0
+
+
+def clear_file_cache() -> None:
+    """Drop every cached download (tests reset this between cases)."""
+    global _file_cache_bytes
+    _file_cache.clear()
+    _file_cache_bytes = 0
+
+
+def _cache_put(file_id: str, data: bytes, media_type: str) -> None:
+    global _file_cache_bytes
+    previous = _file_cache.pop(file_id, None)
+    if previous is not None:
+        _file_cache_bytes -= len(previous[1])
+    if len(data) > _CACHE_MAX_BYTES:
+        return
+    while _file_cache and _file_cache_bytes + len(data) > _CACHE_MAX_BYTES:
+        _evicted_id, evicted = _file_cache.popitem(last=False)
+        _file_cache_bytes -= len(evicted[1])
+    _file_cache[file_id] = (time.monotonic(), data, media_type)
+    _file_cache_bytes += len(data)
 
 
 def bot_of(request: Request) -> Any:
@@ -85,11 +116,18 @@ async def send_and_cleanup(
 
 
 async def fetch_telegram_file(bot: Any, file_id: str) -> tuple[bytes, str]:
-    """Download a file from Telegram; returns ``(bytes, media_type)``."""
+    """Download a file from Telegram (LRU-cached); returns ``(bytes, media_type)``."""
+    now = time.monotonic()
+    cached = _file_cache.get(file_id)
+    if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
+        _file_cache.move_to_end(file_id)
+        return cached[1], cached[2]
     try:
         tg_file = await bot.get_file(file_id)
         data = await tg_file.download_as_bytearray()
     except (TelegramError, OSError) as exc:
         raise HTTPException(status_code=502, detail="could not download from Telegram") from exc
     media_type = safe_media_type(mimetypes.guess_type(tg_file.file_path or "")[0])
-    return bytes(data), media_type
+    payload = bytes(data)
+    _cache_put(file_id, payload, media_type)
+    return payload, media_type

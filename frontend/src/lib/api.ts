@@ -121,7 +121,10 @@ export const api = {
     request<Note>(`/api/notes/${id}`, jsonInit("PUT", payload)),
   deleteNote: (id: number) =>
     request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }),
-  noteFile: (id: number) => requestBlob(`/api/notes/${id}/file`),
+  noteFileToken: (id: number) =>
+    request<{ token: string; media_type: string }>(`/api/notes/${id}/file-token`, {
+      method: "POST",
+    }),
   calendarEvents: (done = false) =>
     request<CalendarEvent[]>(`/api/calendar?done=${done}`),
   createEvent: (payload: CalendarEventInput) =>

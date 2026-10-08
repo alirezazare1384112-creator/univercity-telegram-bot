@@ -203,3 +203,106 @@ async def test_oversized_upload_is_rejected(notes_client, monkeypatch):
     monkeypatch.setattr(files_module, "MAX_FILE_BYTES", 8)
     response = await _upload(notes_client, title="بزرگ")
     assert response.status_code == 413
+
+
+async def test_file_token_grants_headerless_download(notes_client, fake_bot):
+    created = await _upload(notes_client)
+    note_id = created.json()["id"]
+
+    token_resp = await notes_client.post(
+        f"/api/notes/{note_id}/file-token", headers=_headers()
+    )
+    assert token_resp.status_code == 200
+    body = token_resp.json()
+    assert body["media_type"] == "application/pdf"
+
+    # <img>/<iframe> cannot attach headers: the signed URL alone must work.
+    served = await notes_client.get(
+        f"/api/notes/{note_id}/file", params={"t": body["token"]}
+    )
+    assert served.status_code == 200
+    assert served.content == _PDF_BYTES
+    assert served.headers["cache-control"] == "private, max-age=3600"
+    assert served.headers["etag"]
+
+    # Missing credentials are still rejected.
+    assert (await notes_client.get(f"/api/notes/{note_id}/file")).status_code == 401
+
+    # Photos report image/jpeg so the frontend picks the <img> renderer.
+    image = await notes_client.post(
+        "/api/notes",
+        headers=_headers(),
+        data={"title": "اسکن"},
+        files={"file": ("scan.jpg", b"\xff\xd8jpeg", "image/jpeg")},
+    )
+    image_token = await notes_client.post(
+        f"/api/notes/{image.json()['id']}/file-token", headers=_headers()
+    )
+    assert image_token.json()["media_type"] == "image/jpeg"
+
+
+async def test_file_token_is_bound_to_one_note(notes_client):
+    mine = (await _upload(notes_client, user_id=111)).json()["id"]
+    theirs = (await _upload(notes_client, user_id=222)).json()["id"]
+    token = (
+        await notes_client.post(f"/api/notes/{mine}/file-token", headers=_headers())
+    ).json()["token"]
+
+    # The note id is inside the signature: this token opens no other file.
+    crossed = await notes_client.get(
+        f"/api/notes/{theirs}/file", params={"t": token}
+    )
+    assert crossed.status_code == 401
+
+
+async def test_expired_file_token_is_rejected(notes_client):
+    from app.api.auth import sign_file_token
+    from app.config import get_settings
+
+    note_id = (await _upload(notes_client)).json()["id"]
+    expired = sign_file_token(
+        111,
+        note_id,
+        int(time.time()) - 5,
+        bot_token=get_settings().bot_token,
+    )
+    response = await notes_client.get(f"/api/notes/{note_id}/file", params={"t": expired})
+    assert response.status_code == 401
+
+
+async def test_etag_short_circuits_repeat_downloads(notes_client, fake_bot):
+    note_id = (await _upload(notes_client)).json()["id"]
+    first = await notes_client.get(f"/api/notes/{note_id}/file", headers=_headers())
+    assert first.status_code == 200
+
+    revalidated = await notes_client.get(
+        f"/api/notes/{note_id}/file",
+        headers={**_headers(), "If-None-Match": first.headers["etag"]},
+    )
+    assert revalidated.status_code == 304
+    assert revalidated.headers["etag"] == first.headers["etag"]
+    # Telegram was touched exactly once for the two requests.
+    assert fake_bot.get_file_calls == ["DOC-FILE-1"]
+
+
+async def test_large_pdf_is_served_without_gzip(db):
+    big_pdf = b"%PDF-1.4 " + b"x" * 4000
+    fake = FakeBot(file_path="documents/lecture.pdf", payload=big_pdf)
+    app = create_api(SimpleNamespace(bot=fake))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post(
+            "/api/notes",
+            headers=_headers(),
+            data={"title": "جزوهٔ حجیم"},
+            files={"file": ("lecture.pdf", big_pdf, "application/pdf")},
+        )
+        assert created.status_code == 200
+        response = await client.get(
+            f"/api/notes/{created.json()['id']}/file",
+            headers={**_headers(), "Accept-Encoding": "gzip"},
+        )
+    # PDFs are already compressed: no wasted CPU on the wire.
+    assert response.status_code == 200
+    assert "content-encoding" not in response.headers
+    assert response.content == big_pdf
