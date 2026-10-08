@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ImageViewer from "../components/ImageViewer";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
@@ -50,7 +51,6 @@ export default function NotesPage() {
   const [banner, setBanner] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<number | null>(null);
-  const [mediaReady, setMediaReady] = useState(false);
 
   const load = useCallback(async () => {
     setPage({ kind: "loading" });
@@ -118,7 +118,6 @@ export default function NotesPage() {
   const closePreview = () => {
     // Dropping the element lets the WebView release the decoded image/PDF.
     setPreview(null);
-    setMediaReady(false);
   };
 
   const remove = async (id: number) => {
@@ -137,7 +136,6 @@ export default function NotesPage() {
   const showPreview = async (note: Note) => {
     if (loadingPreview !== null) return;
     setLoadingPreview(note.id);
-    setMediaReady(false);
     try {
       const { token, media_type } = await api.noteFileToken(note.id);
       const kind: Preview["kind"] = media_type.startsWith("image/")
@@ -184,6 +182,10 @@ export default function NotesPage() {
     if (filter === "none") return note.course_id === null;
     return note.course_id === filter;
   });
+
+  const previewNote = preview
+    ? page.notes.find((note) => note.id === preview.noteId) ?? null
+    : null;
 
   return (
     <section className="flex flex-col gap-4">
@@ -330,28 +332,8 @@ export default function NotesPage() {
                 </p>
               )}
 
-              {preview?.noteId === note.id && (
+              {preview?.noteId === note.id && preview.kind !== "image" && (
                 <div className="mt-3">
-                  {preview.kind === "image" && !mediaReady && (
-                    <p className="rounded-xl bg-black/5 py-6 text-center text-xs opacity-60">
-                      در حال بارگذاری تصویر…
-                    </p>
-                  )}
-                  {preview.kind === "image" && (
-                    <img
-                      src={preview.url}
-                      alt={note.title}
-                      decoding="async"
-                      onLoad={() => setMediaReady(true)}
-                      onError={() => {
-                        setBanner("نمایش تصویر ممکن نشد؛ فایل را دانلود کنید.");
-                        closePreview();
-                      }}
-                      className={`max-h-80 w-full rounded-xl object-contain ${
-                        mediaReady ? "" : "hidden"
-                      }`}
-                    />
-                  )}
                   {preview.kind === "pdf" && (
                     <>
                       <iframe
@@ -439,6 +421,14 @@ export default function NotesPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {preview?.kind === "image" && (
+        <ImageViewer
+          url={preview.url}
+          alt={previewNote?.title ?? "جزوه"}
+          onClose={closePreview}
+        />
       )}
     </section>
   );
