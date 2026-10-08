@@ -75,6 +75,12 @@ async function requestBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+// File tokens are valid for one hour server-side; reusing one per note keeps
+// the file URL stable so the browser can serve <img>/<iframe> from its own
+// cache instead of refetching on every preview tap.
+const NOTE_TOKEN_REUSE_MS = 55 * 60 * 1000;
+const noteTokens = new Map<number, { token: string; media_type: string; expires: number }>();
+
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   me: () => request<Me>("/api/me"),
@@ -121,10 +127,20 @@ export const api = {
     request<Note>(`/api/notes/${id}`, jsonInit("PUT", payload)),
   deleteNote: (id: number) =>
     request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }),
-  noteFileToken: (id: number) =>
-    request<{ token: string; media_type: string }>(`/api/notes/${id}/file-token`, {
+  sendNoteToTelegram: (id: number) =>
+    request<{ sent: boolean }>(`/api/notes/${id}/send`, { method: "POST" }),
+  noteFileToken: (id: number) => {
+    const hit = noteTokens.get(id);
+    if (hit && hit.expires > Date.now()) {
+      return Promise.resolve({ token: hit.token, media_type: hit.media_type });
+    }
+    return request<{ token: string; media_type: string }>(`/api/notes/${id}/file-token`, {
       method: "POST",
-    }),
+    }).then((fresh) => {
+      noteTokens.set(id, { ...fresh, expires: Date.now() + NOTE_TOKEN_REUSE_MS });
+      return fresh;
+    });
+  },
   calendarEvents: (done = false) =>
     request<CalendarEvent[]>(`/api/calendar?done=${done}`),
   createEvent: (payload: CalendarEventInput) =>

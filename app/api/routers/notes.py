@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
+from telegram.error import TelegramError
 
 from app.api.auth import (
     FILE_TOKEN_TTL_SECONDS,
@@ -167,6 +168,32 @@ async def download_note(
 
     data, media_type = await fetch_telegram_file(bot_of(request), note.file_id)
     return Response(content=data, media_type=media_type, headers=headers)
+
+
+@router.post("/notes/{note_id}/send")
+async def send_note_to_telegram(
+    note_id: int,
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+) -> dict[str, bool]:
+    """Push the note's file into the student's private chat with the bot."""
+    async with get_session() as session:
+        note = await NoteRepository(session).get(note_id, user.id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+    bot = bot_of(request)
+    try:
+        if note.file_type == NOTE_PHOTO:
+            await bot.send_photo(
+                chat_id=user.telegram_id, photo=note.file_id, caption=note.title
+            )
+        else:
+            await bot.send_document(
+                chat_id=user.telegram_id, document=note.file_id, caption=note.title
+            )
+    except TelegramError as exc:
+        raise HTTPException(status_code=502, detail="could not send to Telegram") from exc
+    return {"sent": True}
 
 
 @router.put("/notes/{note_id}", response_model=NoteOut)

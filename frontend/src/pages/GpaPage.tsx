@@ -341,11 +341,6 @@ export default function GpaPage() {
           value={s.pastUnits > 0 ? fa2(s.pastPoints / s.pastUnits) : "—"}
           sub={`${faU(s.pastUnits)} واحد`}
         />
-        <Stat
-          label="نمرهٔ تقریبی از ۴"
-          value={s.cumGpa === null ? "—" : fa2(s.cumGpa / 5)}
-          sub="معدل کل ÷ ۵"
-        />
       </section>
 
       {warnings.length > 0 ? (

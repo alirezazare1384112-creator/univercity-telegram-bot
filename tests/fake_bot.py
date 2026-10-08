@@ -19,16 +19,23 @@ class FakeBot:
         self.file_path = file_path
         self.payload = payload
         self.sent: list[tuple[str, int]] = []
+        self.captions: list[str | None] = []
         self.deleted: list[int] = []
         self.get_file_calls: list[str] = []
 
-    async def send_photo(self, *, chat_id: int, photo: object) -> SimpleNamespace:
+    async def send_photo(
+        self, *, chat_id: int, photo: object, caption: str | None = None, **_kwargs: object
+    ) -> SimpleNamespace:
         self.sent.append(("photo", chat_id))
+        self.captions.append(caption)
         size = SimpleNamespace(file_id="PHOTO-FILE-1", file_unique_id="photo-unique-1")
         return SimpleNamespace(message_id=101, photo=[size], document=None)
 
-    async def send_document(self, *, chat_id: int, document: object) -> SimpleNamespace:
+    async def send_document(
+        self, *, chat_id: int, document: object, caption: str | None = None, **_kwargs: object
+    ) -> SimpleNamespace:
         self.sent.append(("document", chat_id))
+        self.captions.append(caption)
         doc = SimpleNamespace(file_id="DOC-FILE-1", file_unique_id="doc-unique-1")
         return SimpleNamespace(message_id=102, photo=None, document=doc)
 

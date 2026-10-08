@@ -19,6 +19,7 @@ htmlcov/
 data/*.db
 data/*.db-*
 logs/
+storage/
 
 # IDE / OS
 .idea/

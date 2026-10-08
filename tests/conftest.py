@@ -111,11 +111,13 @@ def deterministic_settings(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def clear_telegram_file_cache():
-    """Downloads are LRU-cached in-process; keep expectations per test fresh."""
+def clear_telegram_file_cache(tmp_path):
+    """Downloads are cached in memory and on disk; reset both per test."""
+    from app.api import files as files_module
     from app.api.files import clear_file_cache
 
     clear_file_cache()
+    files_module.set_disk_cache_dir(tmp_path / "telegram_files")
 
 
 @pytest.fixture

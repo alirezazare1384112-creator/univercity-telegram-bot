@@ -306,3 +306,44 @@ async def test_large_pdf_is_served_without_gzip(db):
     assert response.status_code == 200
     assert "content-encoding" not in response.headers
     assert response.content == big_pdf
+
+
+async def test_disk_cache_survives_a_memory_reset(notes_client, fake_bot):
+    """The second view after a restart must not hit Telegram again."""
+    from app.api.files import clear_file_cache
+
+    note_id = (await _upload(notes_client)).json()["id"]
+    first = await notes_client.get(f"/api/notes/{note_id}/file", headers=_headers())
+    assert first.status_code == 200
+    assert first.content == _PDF_BYTES
+
+    clear_file_cache()  # simulates a bot restart / LRU eviction
+    second = await notes_client.get(f"/api/notes/{note_id}/file", headers=_headers())
+    assert second.status_code == 200
+    assert second.content == _PDF_BYTES
+    assert second.headers["content-type"].startswith("application/pdf")
+    assert fake_bot.get_file_calls == ["DOC-FILE-1"]  # still only one download
+
+
+async def test_send_delivers_the_note_into_the_chat(notes_client, fake_bot):
+    note_id = (await _upload(notes_client)).json()["id"]
+    response = await notes_client.post(f"/api/notes/{note_id}/send", headers=_headers())
+    assert response.status_code == 200
+    assert response.json() == {"sent": True}
+    # upload + explicit send, both into chat 111
+    assert fake_bot.sent[-1] == ("document", 111)
+    assert fake_bot.captions[-1] == "جزوهٔ فصل ۱"
+
+
+async def test_send_is_isolated_between_users(notes_client):
+    note_id = (await _upload(notes_client, user_id=111)).json()["id"]
+    response = await notes_client.post(
+        f"/api/notes/{note_id}/send", headers=_headers(user_id=222)
+    )
+    assert response.status_code == 404
+
+
+async def test_send_requires_auth(notes_client):
+    note_id = (await _upload(notes_client)).json()["id"]
+    response = await notes_client.post(f"/api/notes/{note_id}/send")
+    assert response.status_code == 401

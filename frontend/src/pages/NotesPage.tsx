@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ImageViewer from "../components/ImageViewer";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
@@ -51,6 +51,9 @@ export default function NotesPage() {
   const [banner, setBanner] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<number | null>(null);
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef(0);
 
   const load = useCallback(async () => {
     setPage({ kind: "loading" });
@@ -66,6 +69,14 @@ export default function NotesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
+
+  const flashNotice = (message: string) => {
+    setNotice(message);
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 3000);
+  };
 
   const openCreate = () => {
     setBanner(null);
@@ -157,6 +168,22 @@ export default function NotesPage() {
     }
   };
 
+  const sendToTelegram = async (note: Note) => {
+    if (sendingId !== null) return;
+    setSendingId(note.id);
+    setNotice(null);
+    try {
+      await api.sendNoteToTelegram(note.id);
+      haptic("success");
+      flashNotice("در تلگرام ارسال شد ✅");
+    } catch (error: unknown) {
+      setBanner(errorMessage(error));
+      haptic("error");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   if (page.kind === "loading") return <Spinner label="در حال بارگذاری جزوه‌ها…" />;
 
   if (page.kind === "error") {
@@ -203,6 +230,12 @@ export default function NotesPage() {
       {banner && (
         <p className="rounded-xl bg-red-600/10 px-3 py-2 text-center text-xs text-red-700">
           {banner}
+        </p>
+      )}
+
+      {notice && (
+        <p className="rounded-xl bg-emerald-600/10 px-3 py-2 text-center text-xs font-bold text-emerald-700">
+          {notice}
         </p>
       )}
 
@@ -390,6 +423,16 @@ export default function NotesPage() {
                   className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
                 >
                   ✏️
+                </button>
+                <button
+                  type="button"
+                  title="ارسال در تلگرام"
+                  aria-label="ارسال در تلگرام"
+                  onClick={() => void sendToTelegram(note)}
+                  disabled={sendingId !== null}
+                  className="rounded-xl bg-blue-600/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80 disabled:opacity-60"
+                >
+                  {sendingId === note.id ? "…" : "📤"}
                 </button>
                 {confirmId === note.id ? (
                   <>
