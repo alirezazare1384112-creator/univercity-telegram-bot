@@ -58,9 +58,17 @@ export default function GradesSummaryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-lg font-bold">📝 نمرات</h1>
-        <p className="text-xs opacity-70">جمع‌بندی همهٔ درس‌های این ترم</p>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold">📝 نمرات</h1>
+          <p className="text-xs opacity-70">جمع‌بندی همهٔ درس‌های این ترم</p>
+        </div>
+        <Link
+          to="/gpa"
+          className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+        >
+          📊 معدل
+        </Link>
       </div>
 
       <section className="rounded-2xl bg-gradient-to-bl from-emerald-600 to-emerald-800 p-5 text-white">

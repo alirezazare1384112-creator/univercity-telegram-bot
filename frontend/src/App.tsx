@@ -12,6 +12,7 @@ const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const CoursesPage = lazy(() => import("./pages/CoursesPage"));
+const GpaPage = lazy(() => import("./pages/GpaPage"));
 const GradesPage = lazy(() => import("./pages/GradesPage"));
 const GradesSummaryPage = lazy(() => import("./pages/GradesSummaryPage"));
 const LinksPage = lazy(() => import("./pages/LinksPage"));
@@ -54,6 +55,7 @@ function Shell() {
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/courses/:courseId/grades" element={<GradesPage />} />
             <Route path="/grades" element={<GradesSummaryPage />} />
+            <Route path="/gpa" element={<GpaPage />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/reminders" element={<RemindersPage />} />

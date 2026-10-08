@@ -129,6 +129,21 @@ export default function DashboardPage() {
       <section className="rounded-2xl bg-black/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
+            <h2 className="text-sm font-bold opacity-70">📊 معدل</h2>
+            <p className="mt-1 text-sm">محاسبهٔ معدل ترم و کل با سوابق ترم‌ها</p>
+          </div>
+          <Link
+            to="/gpa"
+            className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+          >
+            ورود
+          </Link>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-black/5 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
             <h2 className="text-sm font-bold opacity-70">برنامهٔ هفتگی</h2>
             <p className="mt-1 text-sm">
               {data.schedule ? "برنامهٔ شما ثبت شده است." : "هنوز برنامه‌ای ثبت نکرده‌اید."}

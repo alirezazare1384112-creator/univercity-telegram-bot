@@ -1,7 +1,8 @@
-"""🧮 محاسبه معدل - link to the external GPA calculator website.
+"""🧮 محاسبه معدل - open the built-in GPA page inside the Mini App.
 
-The bot does **not** calculate the GPA itself. The URL lives in ``.env``
-(``GPA_CALCULATOR_URL``) and is never hard-coded in the source.
+Primary path: ``{WEBAPP_URL}/#/gpa`` (the calculator shipped with the Mini App).
+Fallback: ``GPA_CALCULATOR_URL`` from ``.env`` when no https WEBAPP_URL exists.
+Neither URL is ever hard-coded in the source.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 import logging
 import urllib.parse
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
@@ -24,7 +25,8 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-BUTTON_LABEL = "🌐 باز کردن سایت محاسبه معدل"
+MINI_APP_BUTTON = "📱 باز کردن صفحهٔ معدل"
+EXTERNAL_BUTTON = "🌐 باز کردن سایت محاسبه معدل"
 
 
 def _valid_url(url: str) -> bool:
@@ -35,8 +37,35 @@ def _valid_url(url: str) -> bool:
     return parts.scheme in ("http", "https") and bool(parts.netloc)
 
 
+def _mini_app_url(webapp_url: str) -> str:
+    """GPA route of the Mini App for an https WEBAPP_URL, else empty string."""
+    if not webapp_url.startswith("https://"):
+        return ""
+    return f"{webapp_url}/#/gpa"
+
+
 async def gpa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = get_settings()
+
+    mini_url = _mini_app_url(settings.webapp_url)
+    if mini_url:
+        markup = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton(MINI_APP_BUTTON, web_app=WebAppInfo(url=mini_url))],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="gpa:back")],
+            ]
+        )
+        await answer(
+            update,
+            context,
+            "🧮 محاسبه معدل\n\n"
+            "نمرات و تعداد واحد دروس را داخل مینی‌اپ وارد کن تا معدل ترم جاری، "
+            "معدل کل و سوابق ترم‌ها محاسبه شود.\n\n"
+            "روی دکمهٔ زیر بزن تا صفحهٔ معدل باز شود.",
+            reply_markup=markup,
+        )
+        return
+
     url = settings.gpa_calculator_url
 
     if not url:
@@ -60,7 +89,7 @@ async def gpa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     markup = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton(BUTTON_LABEL, url=url)],
+            [InlineKeyboardButton(EXTERNAL_BUTTON, url=url)],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="gpa:back")],
         ]
     )

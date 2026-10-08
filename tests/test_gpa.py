@@ -44,6 +44,60 @@ async def test_gpa_button_sends_the_url_from_settings(db, monkeypatch):
     assert "example.com" not in text
 
 
+async def test_gpa_prefers_the_mini_app_page_when_webapp_is_configured(db, monkeypatch):
+    import app.bot.handlers.gpa as module
+    from app.config import Settings
+
+    fake = Settings(
+        bot_token="123456:TEST-TOKEN",
+        database_url="sqlite://",
+        gpa_calculator_url="https://gpa.example.ir/calc",
+        webapp_url="https://bot.example.com/app",
+        admin_ids=frozenset(),
+        timezone="Asia/Tehran",
+        log_level="INFO",
+        log_dir=Path("."),
+    )
+    monkeypatch.setattr(module, "get_settings", lambda: fake)
+
+    context = FakeContext()
+    await gpa_handler(make_text_update(GPA, user_id=6004), context)
+
+    markup = context.last_markup
+    button = markup.inline_keyboard[0][0]
+    assert button.web_app is not None
+    assert button.web_app.url == "https://bot.example.com/app/#/gpa"
+    back = markup.inline_keyboard[1][0]
+    assert back.callback_data == "gpa:back"
+    # the built-in page wins over the external calculator
+    assert all(b.web_app is None for row in markup.inline_keyboard for b in row[1:])
+
+
+async def test_http_webapp_url_falls_back_to_the_external_site(db, monkeypatch):
+    import app.bot.handlers.gpa as module
+    from app.config import Settings
+
+    fake = Settings(
+        bot_token="123456:TEST-TOKEN",
+        database_url="sqlite://",
+        gpa_calculator_url="https://gpa.example.ir/calc",
+        webapp_url="http://127.0.0.1:8000",
+        admin_ids=frozenset(),
+        timezone="Asia/Tehran",
+        log_level="INFO",
+        log_dir=Path("."),
+    )
+    monkeypatch.setattr(module, "get_settings", lambda: fake)
+
+    context = FakeContext()
+    await gpa_handler(make_text_update(GPA, user_id=6005), context)
+
+    markup = context.last_markup
+    button = markup.inline_keyboard[0][0]
+    assert button.web_app is None
+    assert button.url == "https://gpa.example.ir/calc"
+
+
 async def test_gpa_without_url_shows_a_clear_message(db, monkeypatch):
     import app.bot.handlers.gpa as module
     from app.config import Settings
