@@ -25,4 +25,11 @@ jobs:
           GH_TOKEN: ${{ secrets.TICK_PAT }}
         run: |
           sleep 300
-          gh workflow run tick.yml --ref main
+          gh workflow run tick.yml --ref main \
+            -R alirezazare1384112-creator/univercity-telegram-bot \
+          || curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d '{"ref":"main"}' \
+            https://api.github.com/repos/alirezazare1384112-creator/univercity-telegram-bot/actions/workflows/tick.yml/dispatches
