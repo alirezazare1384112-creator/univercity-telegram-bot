@@ -23,6 +23,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from telegram import Update  # noqa: E402
 
 from app.api import create_api  # noqa: E402
@@ -72,10 +73,12 @@ async def _ensure_ready() -> None:
     global _ready
     if _ready:
         return
+    migration_error = ""
     try:
         try:
             _run_migrations()
-        except Exception:
+        except Exception as exc:
+            migration_error = f"{type(exc).__name__}: {exc}"[:200]
             logger.exception("Migration attempt failed (will retry on next request)")
         application = _get_ptb()
         await application.initialize()
@@ -83,7 +86,10 @@ async def _ensure_ready() -> None:
         logger.info("Serverless bot initialized")
     except Exception as exc:
         logger.exception("Serverless init failed")
-        raise HTTPException(status_code=503, detail="bot initializing, retry") from exc
+        reason = f"init failed: {type(exc).__name__}: {exc}"[:300]
+        if migration_error:
+            reason += f" | migration: {migration_error}"
+        raise HTTPException(status_code=503, detail=reason) from exc
 
 
 def _require_bearer(authorization: str | None) -> None:
@@ -99,7 +105,14 @@ api: FastAPI = create_api(None)
 async def _serverless_lifecycle(request: Request, call_next):
     """Initialize the bot before any real /api/* request is served."""
     if request.url.path.startswith("/api/") and request.url.path not in _LIGHT_PATHS:
-        await _ensure_ready()
+        try:
+            await _ensure_ready()
+        except HTTPException as exc:
+            # surface the real failure instead of a bare Vercel 500 page
+            return JSONResponse(
+                {"detail": "not ready", "reason": str(exc.detail)[:400]},
+                status_code=exc.status_code,
+            )
     return await call_next(request)
 
 

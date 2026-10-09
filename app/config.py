@@ -26,12 +26,27 @@ _POSTGRES_PREFIXES = ("postgresql+asyncpg://", "postgresql://", "postgres://")
 _ASYNC_POSTGRES_PREFIX = "postgresql+asyncpg://"
 
 
+def _fix_postgres_extras(url: str) -> str:
+    """Map psycopg-style query params onto what asyncpg/SQLAlchemy accept."""
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    params = dict(parse_qsl(parts.query))
+    if "sslmode" in params:
+        params.setdefault("ssl", params.pop("sslmode"))
+    params.pop("channel_binding", None)
+    query = urlencode(params)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
 def normalize_database_url(raw_url: str) -> str:
     """Turn the URL from `.env` into an async SQLAlchemy URL.
 
     - ``sqlite:///...``      -> ``sqlite+aiosqlite:///...``  (development)
     - ``postgresql://...``   -> ``postgresql+asyncpg://...`` (production)
 
+    Neon/Vercel export psycopg-style extras (``sslmode``, ``channel_binding``)
+    that asyncpg does not accept; they are translated/dropped here.
     Relative SQLite paths are resolved against the project root so the bot
     behaves the same no matter which folder it is started from.
     """
@@ -40,7 +55,8 @@ def normalize_database_url(raw_url: str) -> str:
     # ---- PostgreSQL -------------------------------------------------
     for prefix in _POSTGRES_PREFIXES:
         if url.startswith(prefix):
-            return _ASYNC_POSTGRES_PREFIX + url[len(prefix):]
+            async_url = _ASYNC_POSTGRES_PREFIX + url[len(prefix):]
+            return _fix_postgres_extras(async_url)
 
     # ---- SQLite -----------------------------------------------------
     for prefix in _SQLITE_PREFIXES:
