@@ -147,6 +147,15 @@ class _ImmutableStaticFiles(StaticFiles):
         return response
 
 
+def _resolve_spa_dist() -> Path | None:
+    """Locate the built Mini App (Vercel ``public/`` or local ``frontend/dist``)."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    for candidate in (repo_root / "public", repo_root / "frontend" / "dist"):
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
 def create_api(
     application: Application | None = None, *, mount_spa: bool = True
 ) -> FastAPI:
@@ -232,10 +241,13 @@ def create_api(
         )
         return {"ok": "1"}
 
-    # Production: serve the built Mini App from frontend/dist (SPA fallback).
+    # Local/host production: serve the built Mini App from frontend/dist.
+    # Vercel copies the build into ``public/`` and serves it from the CDN;
+    # that deployment therefore uses ``mount_spa=False`` so this catch-all
+    # cannot shadow later GET routes such as ``/api/setup``.
     # In dev the Vite server answers on :5173, so a missing dist/ is fine.
-    dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-    if mount_spa and dist.is_dir():
+    dist = _resolve_spa_dist()
+    if mount_spa and dist is not None and dist.is_dir():
         assets = dist / "assets"
         if assets.is_dir():
             api.mount("/assets", _ImmutableStaticFiles(directory=assets), name="assets")

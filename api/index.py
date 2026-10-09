@@ -125,11 +125,9 @@ def _require_bearer(authorization: str | None) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
-# Vercel serves the built Mini App from ``outputDirectory: public``
-# (buildCommand copies ``frontend/dist`` there). No in-function SPA route:
-# a GET ``/{full_path:path}`` catch-all would shadow later GET routes
-# (``/api/setup``) whenever static files are present in the bundle.
-api: FastAPI = create_api(None, mount_spa=False)
+# Local/host production may still want the SPA served from the function;
+# on Vercel ``outputDirectory: public`` serves the Mini App from the CDN.
+api: FastAPI = create_api(None, mount_spa=not bool(os.getenv("VERCEL")))
 
 
 @api.middleware("http")
