@@ -53,9 +53,9 @@ def _get_ptb():
 _PERSISTENCE_DDL = """
 CREATE TABLE IF NOT EXISTS persistence_store (
     kind TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value JSONB,
-    PRIMARY KEY (kind, key)
+    entry_key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (kind, entry_key)
 )
 """
 
