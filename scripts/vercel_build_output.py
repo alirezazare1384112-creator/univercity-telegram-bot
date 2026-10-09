@@ -21,14 +21,15 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / ".vercel" / "output"
 
 
-def _run(cmd: list[str]) -> None:
-    subprocess.check_call(cmd, cwd=ROOT)
+def _run(cmd: list[str], cwd: Path | None = None) -> None:
+    subprocess.check_call(cmd, cwd=cwd or ROOT)
 
 
 def main() -> int:
     # 1. Build the Mini App
-    _run(["npm", "install"])
-    _run(["npm", "run", "build"])
+    frontend = ROOT / "frontend"
+    _run(["npm", "install"], cwd=frontend)
+    _run(["npm", "run", "build"], cwd=frontend)
 
     # 2. Stage the Python function bundle
     fn = OUT / "functions" / "api" / "index.py"
