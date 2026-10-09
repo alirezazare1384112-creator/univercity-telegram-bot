@@ -18,6 +18,7 @@ htmlcov/
 # Project runtime data
 data/*.db
 data/*.db-*
+data/webapp_url
 logs/
 storage/
 
