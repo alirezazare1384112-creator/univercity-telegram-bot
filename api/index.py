@@ -57,7 +57,8 @@ def _run_migrations() -> None:
     from alembic import command
     from alembic.config import Config
 
-    cfg = Config(str(BASE_DIR / "alembic.ini"))
+    # no alembic.ini on the serverless bundle - configure directly
+    cfg = Config()
     cfg.set_main_option(
         "script_location", str(BASE_DIR / "app" / "database" / "migrations")
     )
@@ -117,15 +118,71 @@ async def telegram_webhook(
     if update is not None:
         await application.process_update(update)
         await application.update_persistence()
+        # opportunistic sweeps: an active bot keeps its reminders fresh even
+        # when no external cron is configured yet (throttled per instance)
+        await _maybe_background_sweeps(application)
     return {"ok": True}
+
+
+async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
+    """Reminder sweep (+ optional channel syncs). Never raises."""
+    from app.scheduler import run_eitaa_sync, run_one_cycle, run_user_channel_sync
+
+    results: dict[str, object] = {}
+    try:
+        results["reminders"] = await run_one_cycle(application)
+    except Exception:
+        logger.exception("sweep: reminder cycle failed")
+        results["reminders"] = "failed"
+
+    if with_sync:
+        try:
+            imported = await run_eitaa_sync()
+            if imported:
+                logger.info("sweep: eitaa imported %s post(s)", imported)
+            results["eitaa"] = imported
+        except Exception:
+            logger.exception("sweep: eitaa sync failed")
+
+        try:
+            notified = await run_user_channel_sync(application)
+            if notified:
+                logger.info("sweep: user channels notified %s", notified)
+            results["user_channels"] = {str(k): v for k, v in notified.items()}
+        except Exception:
+            logger.exception("sweep: user channel sync failed")
+    return results
+
+
+# instance-local throttle for the webhook piggyback (seconds)
+_LAST_REMINDER_SWEEP = 0.0
+_LAST_SYNC_SWEEP = 0.0
+_REMINDER_SWEEP_SECONDS = 60.0
+_SYNC_SWEEP_SECONDS = 300.0
+
+
+async def _maybe_background_sweeps(application) -> None:
+    """Run reminder/sync sweeps piggybacked on real user traffic."""
+    global _LAST_REMINDER_SWEEP, _LAST_SYNC_SWEEP
+
+    import time as _time
+
+    now = _time.monotonic()
+    need_reminders = now - _LAST_REMINDER_SWEEP >= _REMINDER_SWEEP_SECONDS
+    need_sync = now - _LAST_SYNC_SWEEP >= _SYNC_SWEEP_SECONDS
+    if not (need_reminders or need_sync):
+        return
+    if need_reminders:
+        _LAST_REMINDER_SWEEP = now
+    if need_sync:
+        _LAST_SYNC_SWEEP = now
+    await _run_sweeps(application, with_sync=need_sync)
 
 
 @api.post("/api/cron/tick")
 @api.post("/api/index/cron/tick")
 async def cron_tick(authorization: str | None = Header(default=None)) -> dict:
     _require_bearer(authorization)
-    from app.scheduler import run_eitaa_sync, run_one_cycle, run_user_channel_sync
-
     application = _get_ptb()
     results: dict[str, object] = {}
 
@@ -141,28 +198,7 @@ async def cron_tick(authorization: str | None = Header(default=None)) -> dict:
     except Exception:
         logger.exception("set_webhook from cron failed")
 
-    try:
-        results["reminders"] = await run_one_cycle(application)
-    except Exception:
-        logger.exception("cron: reminder cycle failed")
-        results["reminders"] = "failed"
-
-    try:
-        imported = await run_eitaa_sync()
-        if imported:
-            logger.info("cron: eitaa imported %s post(s)", imported)
-        results["eitaa"] = imported
-    except Exception:
-        logger.exception("cron: eitaa sync failed")
-
-    try:
-        notified = await run_user_channel_sync(application)
-        if notified:
-            logger.info("cron: user channels notified %s", notified)
-        results["user_channels"] = {str(k): v for k, v in notified.items()}
-    except Exception:
-        logger.exception("cron: user channel sync failed")
-
+    results.update(await _run_sweeps(application, with_sync=True))
     await application.update_persistence()
     return results
 
