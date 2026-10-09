@@ -179,6 +179,17 @@ async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
 
     if with_sync:
         try:
+            # push the current Mini App keyboard when WEBAPP_URL rotates
+            # (local marker is per-instance; on Vercel the stable domain
+            # is already in DB so this is a no-op after the first send)
+            from app.scheduler import run_webapp_url_notice
+
+            await run_webapp_url_notice(application)
+        except Exception as exc:
+            logger.exception("sweep: webapp url notice failed")
+            results["webapp_notice"] = f"failed: {type(exc).__name__}: {exc}"[:200]
+
+        try:
             imported = await run_eitaa_sync()
             if imported:
                 logger.info("sweep: eitaa imported %s post(s)", imported)
