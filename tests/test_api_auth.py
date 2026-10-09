@@ -18,12 +18,17 @@ def _fields(
     user_id: int = 111,
     auth_date: int | None = None,
     name: str = "سارا",
+    photo_url: str | None = None,
 ) -> dict[str, str]:
+    user_obj: dict[str, object] = {
+        "id": user_id,
+        "first_name": name,
+        "username": f"u{user_id}",
+    }
+    if photo_url is not None:
+        user_obj["photo_url"] = photo_url
     return {
-        "user": json.dumps(
-            {"id": user_id, "first_name": name, "username": f"u{user_id}"},
-            ensure_ascii=False,
-        ),
+        "user": json.dumps(user_obj, ensure_ascii=False),
         "auth_date": str(auth_date if auth_date is not None else int(time.time())),
         "query_id": "AAF-test",
     }
@@ -115,3 +120,65 @@ async def test_hash_field_must_be_present(api_client):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "missing hash"
+
+
+async def test_photo_url_is_persisted_and_returned(api_client, db):
+    """Telegram sends photo_url inside initData; we store and surface it."""
+    photo = "https://telegram.org/img/user/111.jpg"
+    response = await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields(photo_url=photo))}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["photo_url"] == photo
+
+    # Stored in the database
+    async with db() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == 111))
+    assert user is not None and user.photo_url == photo
+
+
+async def test_missing_photo_url_is_null(api_client, db):
+    """Users without a profile photo get null, not an empty string."""
+    response = await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields())}
+    )
+    assert response.status_code == 200
+    assert response.json()["photo_url"] is None
+
+
+async def test_photo_url_is_refreshed_on_each_login(api_client, db):
+    """Telegram rotates the URL on each initData; we always store the latest."""
+    first = "https://telegram.org/img/user/111-v1.jpg"
+    await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields(photo_url=first))}
+    )
+    second = "https://telegram.org/img/user/111-v2.jpg"
+    response = await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields(photo_url=second))}
+    )
+    assert response.json()["photo_url"] == second
+    async with db() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == 111))
+    assert user is not None and user.photo_url == second
+
+
+async def test_photo_url_not_cleared_when_absent(api_client, db):
+    """When Telegram omits photo_url we keep the previously stored value.
+
+    This matches Telegram's behaviour: a user who once had a profile photo
+    keeps it even if they later open the Mini App from a client that does
+    not include the field. Only an explicit ``null`` would clear it, and
+    Telegram never sends null.
+    """
+    photo = "https://telegram.org/img/user/111.jpg"
+    await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields(photo_url=photo))}
+    )
+    # Second call without photo_url in the user object
+    await api_client.get(
+        "/api/me", headers={INIT_DATA_HEADER: sign_init_data(_fields())}
+    )
+    async with db() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == 111))
+    assert user is not None and user.photo_url == photo

@@ -6,6 +6,40 @@ import { useAuth } from "../lib/auth";
 import { getWebApp } from "../lib/telegram";
 import type { ProfileInput } from "../lib/types";
 
+// Telegram photo URLs are served from https://telegram.org/img/... and use
+// the standard Telegram avatar transformation. We fall back to the first
+// letter of the user's first name (or "ک") when no photo is set.
+function Avatar({
+  photoUrl,
+  firstLetter,
+  size = "h-14 w-14 text-xl",
+}: {
+  photoUrl: string | null;
+  firstLetter: string;
+  size?: string;
+}) {
+  const [errored, setErrored] = useState(false);
+
+  if (photoUrl && !errored) {
+    return (
+      <img
+        src={photoUrl}
+        alt="عکس پروفایل"
+        referrerPolicy="no-referrer"
+        onError={() => setErrored(true)}
+        className={`${size} shrink-0 rounded-full object-cover bg-blue-600`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white`}
+    >
+      {firstLetter}
+    </div>
+  );
+}
+
 function haptic(type: "success" | "error"): void {
   getWebApp()?.HapticFeedback?.notificationOccurred(type);
 }
@@ -94,9 +128,10 @@ export default function ProfilePage() {
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center gap-3 rounded-2xl bg-black/5 p-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">
-          {(user.first_name || "ک").slice(0, 1)}
-        </div>
+        <Avatar
+          photoUrl={user.photo_url}
+          firstLetter={(user.first_name || "ک").slice(0, 1)}
+        />
         <div className="min-w-0">
           <p className="truncate font-bold">{displayName}</p>
           <p className="truncate text-xs opacity-70" dir="ltr">
