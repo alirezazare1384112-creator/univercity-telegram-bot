@@ -1,0 +1,16 @@
+name: Reminder tick
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the sweep
+        run: >
+          curl -fsS -X POST
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          https://univercity-telegram-bot.vercel.app/api/cron/tick

@@ -31,3 +31,6 @@ storage/
 /public/
 .vercel/
 .vercel/output/
+
+.vercel
+.env*
