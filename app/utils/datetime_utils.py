@@ -49,7 +49,18 @@ def utc_to_local(dt_utc: datetime, tz_name: str) -> datetime:
 
 
 def local_to_utc_naive(dt_local: datetime, tz_name: str) -> datetime:
-    """Aware local time -> naive UTC."""
+    """Local time (naive or aware) -> naive UTC.
+
+    Pydantic parses JSON datetimes as naive (no tzinfo). Without this
+    fix, ``dt_local.astimezone(UTC)`` would treat the naive value as
+    being in the *system* timezone and convert it as such - on a UTC
+    CI box the conversion is a no-op, so the stored row would already
+    be in local time and ``utc_to_local`` would then shift it again,
+    landing 3:30 off (Asia/Tehran). Attaching ``tz_name`` first makes
+    the round-trip stable on every machine.
+    """
+    if dt_local.tzinfo is None:
+        dt_local = dt_local.replace(tzinfo=get_tz(tz_name))
     return dt_local.astimezone(UTC).replace(tzinfo=None)
 
 

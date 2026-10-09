@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import gzip as _gzip_module
+import io
 import json
 import logging
 import math
+import re as _re_module
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from starlette.middleware.gzip import GZipMiddleware
+from starlette.datastructures import Headers
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
@@ -63,6 +67,191 @@ _RATE_LIMIT_EXEMPT = {
 }
 
 
+# --- GZip middleware with content-type exclusion -------------------------------
+#
+# Starlette's bundled ``GZipMiddleware`` historically only accepted
+# ``minimum_size`` and ``compresslevel``. ``exclude_content_types`` was
+# added in newer versions; the version pinned by this project does not
+# expose it, so we ship a small standalone implementation that:
+#   - gzips responses when the client accepts gzip AND the body is at
+#     least ``minimum_size`` bytes AND the Content-Type is not in the
+#     exclude list
+#   - passes everything else through untouched
+#
+# This is the single-responder pattern used by Starlette internally,
+# trimmed to what this project needs. The responder buffers body chunks
+# in memory only while gzip is active; a response that is *not* gzipped
+# is forwarded chunk-by-chunk without buffering, so streaming file
+# downloads keep their low memory footprint.
+
+
+class GZipMiddleware:
+    """GZip middleware with optional ``exclude_content_types`` support."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        minimum_size: int = 500,
+        compresslevel: int = 9,
+        exclude_content_types: tuple[str, ...] = (),
+    ) -> None:
+        self.app = app
+        self.minimum_size = minimum_size
+        self.compresslevel = compresslevel
+        self._exclude_patterns = tuple(
+            _re_module.compile("^" + p.replace("*", ".*") + r"$")
+            for p in exclude_content_types
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Skip entirely when the client does not accept gzip.
+        if "gzip" not in Headers(scope=scope).get("Accept-Encoding", ""):
+            await self.app(scope, receive, send)
+            return
+
+        responder = _GZipResponder(
+            self.app,
+            self.minimum_size,
+            self.compresslevel,
+            self._exclude_patterns,
+        )
+        await responder(scope, receive, send)
+
+
+class _GZipResponder:
+    """Per-request state machine that decides whether to gzip."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        minimum_size: int,
+        compresslevel: int,
+        exclude_patterns: tuple,
+    ) -> None:
+        self.app = app
+        self.minimum_size = minimum_size
+        self.compresslevel = compresslevel
+        self.exclude_patterns = exclude_patterns
+        self.initial_message: Message = {}
+        self.started = False
+        self.pass_through = False
+        self.gzip_buffer = io.BytesIO()
+        self.gzip_file: _gzip_module.GzipFile | None = None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.send = send  # type: ignore[attr-defined]
+        await self.app(scope, receive, self._send)
+
+    async def _send(self, message: Message) -> None:
+        if message["type"] == "http.response.start":
+            await self._on_start(message)
+            return
+        if message["type"] != "http.response.body":
+            # Forward anything we don't recognise (e.g. websocket frames).
+            await self.send(message)  # type: ignore[attr-defined]
+            return
+
+        body = message.get("body", b"")
+        more_body = message.get("more_body", False)
+
+        if self.pass_through or not self.started:
+            await self.send(message)  # type: ignore[attr-defined]
+            if not more_body:
+                self._close_gzip()
+            return
+
+        # GZip path: compress this chunk, flush so the client sees
+        # progress on large responses, then forward the compressed
+        # bytes as a body chunk.
+        assert self.gzip_file is not None
+        self.gzip_file.write(body)
+        if more_body:
+            self.gzip_file.flush()
+            compressed = self.gzip_buffer.getvalue()
+            if compressed:
+                self.gzip_buffer.seek(0)
+                self.gzip_buffer.truncate(0)
+                await self.send(  # type: ignore[attr-defined]
+                    {"type": "http.response.body", "body": compressed, "more_body": True}
+                )
+        else:
+            # Final chunk: close the gzip stream, send the tail.
+            self.gzip_file.close()
+            compressed = self.gzip_buffer.getvalue()
+            self.gzip_buffer.seek(0)
+            self.gzip_buffer.truncate(0)
+            await self.send(  # type: ignore[attr-defined]
+                {"type": "http.response.body", "body": compressed, "more_body": False}
+            )
+            self.started = False
+
+    async def _on_start(self, message: Message) -> None:
+        self.initial_message = message
+        headers = Headers(raw=message.get("headers", []))
+
+        # Already has a Content-Encoding -> do not double-compress.
+        if "content-encoding" in headers:
+            self.pass_through = True
+            await self.send(message)  # type: ignore[attr-defined]
+            return
+
+        # Too small to bother compressing.
+        content_length = headers.get("content-length")
+        if content_length is not None and int(content_length) < self.minimum_size:
+            self.pass_through = True
+            await self.send(message)  # type: ignore[attr-defined]
+            return
+
+        # Excluded content-type -> skip gzip.
+        ctype = headers.get("content-type", "").split(";", 1)[0].strip()
+        if any(p.match(ctype) for p in self.exclude_patterns):
+            self.pass_through = True
+            await self.send(message)  # type: ignore[attr-defined]
+            return
+
+        # All checks passed -> start gzip. Replace Content-Length with
+        # the compressed size (unknown until we close the stream) and
+        # add Content-Encoding: gzip + Vary: Accept-Encoding.
+        self.started = True
+        self.gzip_file = _gzip_module.GzipFile(
+            mode="wb",
+            fileobj=self.gzip_buffer,
+            compresslevel=self.compresslevel,
+        )
+
+        # Build the modified start message.
+        raw_headers = list(message.get("headers", []))
+        # Strip Content-Length (will be wrong after compression).
+        raw_headers = [
+            (k, v) for (k, v) in raw_headers
+            if k.lower() != b"content-length"
+        ]
+        raw_headers.append((b"content-encoding", b"gzip"))
+        # Vary header: append to existing if present.
+        vary_existing = headers.get("vary", "")
+        if vary_existing:
+            if "accept-encoding" not in vary_existing.lower():
+                raw_headers.append((b"vary", vary_existing.encode() + b", Accept-Encoding"))
+        else:
+            raw_headers.append((b"vary", b"Accept-Encoding"))
+
+        new_message = dict(message)
+        new_message["headers"] = raw_headers
+        await self.send(new_message)  # type: ignore[attr-defined]
+
+    def _close_gzip(self) -> None:
+        if self.gzip_file is not None:
+            self.gzip_file.close()
+            self.gzip_file = None
+        self.gzip_buffer.seek(0)
+        self.gzip_buffer.truncate(0)
+        self.started = False
+
+
 def _install_rate_limit(api: FastAPI) -> None:
     """Return 429 (with Retry-After) when a client exceeds the window.
 
@@ -70,9 +259,31 @@ def _install_rate_limit(api: FastAPI) -> None:
     (behind cloudflared the direct peer is always localhost), falling
     back to the socket address. State lives on ``api.state`` so tests
     can shrink the limit or the window.
-    """
 
-    hits: dict[str, deque[float]] = {}
+    Eviction is LRU-by-staleness: when the table exceeds the cap, the
+    oldest buckets (by first-timestamp) are dropped first. This avoids
+    the previous ``hits.clear()`` behaviour, which wiped *every* rate
+    limit on overflow and let an attacker reset the table at will.
+    """
+    from collections import OrderedDict
+
+    hits: OrderedDict[str, deque[float]] = OrderedDict()
+
+    def _evict_stale(now: float, window: float) -> None:
+        """Drop empty buckets and oldest entries above the cap."""
+        if not hits:
+            return
+        # First pass: pop empty buckets (their window expired).
+        stale_keys = [
+            k for k, bucket in hits.items()
+            if not bucket or now - bucket[-1] > window
+        ]
+        for k in stale_keys:
+            hits.pop(k, None)
+        # Second pass: if still over the cap, drop the oldest by insertion
+        # order (OrderedDict popitem(last=False) = FIFO).
+        while len(hits) > _RATE_LIMIT_MAX_KEYS:
+            hits.popitem(last=False)
 
     @api.middleware("http")
     async def rate_limit(request: Request, call_next) -> object:
@@ -91,7 +302,13 @@ def _install_rate_limit(api: FastAPI) -> None:
             window = float(api.state.rate_window)
             limit = int(api.state.rate_limit)
             now = time.monotonic()
-            bucket = hits.setdefault(key, deque())
+            bucket = hits.get(key)
+            if bucket is None:
+                bucket = deque()
+                hits[key] = bucket
+            else:
+                # Move to end so OrderedDict reflects recent activity (LRU).
+                hits.move_to_end(key)
             while bucket and now - bucket[0] > window:
                 bucket.popleft()
             if len(bucket) >= limit:
@@ -107,8 +324,7 @@ def _install_rate_limit(api: FastAPI) -> None:
                     headers={"Retry-After": str(retry_after)},
                 )
             bucket.append(now)
-            if len(hits) > _RATE_LIMIT_MAX_KEYS:
-                hits.clear()
+            _evict_stale(now, window)
         return await call_next(request)
 
 
@@ -183,11 +399,14 @@ def create_api(
     _install_rate_limit(api)
     _install_security(api)
     # Outermost of all: gzips the JS/CSS bundles (337 KB -> ~97 KB on the
-    # wire) plus API JSON. Bodies >= 128 KB are compressed off the event
-    # loop (starlette's thread_minimum_size). PDFs/zips are already
-    # compressed, so gzip there would only burn CPU.
+    # wire) plus API JSON. ``minimum_size=1024`` skips the small JSON
+    # snippets (most API responses are <1 KB) where the gzip overhead
+    # would actually grow the body. ``exclude_content_types`` keeps
+    # already-compressed binaries (PDF/zip/image/audio/video) out of
+    # the gzip path so we do not waste CPU and grow the body.
     api.add_middleware(
         GZipMiddleware,
+        minimum_size=1024,
         compresslevel=6,
         exclude_content_types=(
             "application/gzip",

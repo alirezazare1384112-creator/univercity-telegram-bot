@@ -4,11 +4,12 @@ The service never holds two database sessions at the same time:
 
 1. ``collect_due`` reads what must be sent now (session 1, then closed)
 2. messages are sent with no session open
-3. results are written back (session 2)
+3. results are written back in one batch (session 2)
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +35,11 @@ ALERT_PREFIX = {
     ALERT_HOURS_1: "⏱ ۱ ساعت دیگر:",
     ALERT_DAYS_1: "📆 فردا همین وقت:",
 }
+
+# Telegram allows ~30 msg/s to different chats. We cap concurrency at 10
+# (instead of unbounded ``asyncio.gather``) so a burst of 50 due alerts
+# does not trip the global rate limit and get the bot throttled.
+_SEND_CONCURRENCY = 10
 
 
 @dataclass(slots=True)
@@ -163,38 +169,58 @@ async def advance_repeating(session: AsyncSession, now: datetime | None = None) 
 async def process_due_notifications(
     send_message, timezone_name: str
 ) -> dict[str, int]:
-    """Deliver every due alert once. Returns ``{sent, failed, advanced}``."""
+    """Deliver every due alert once. Returns ``{sent, failed, advanced}``.
+
+    Sending is bounded by ``_SEND_CONCURRENCY`` (10) so 50 due alerts
+    finish in ~5 seconds instead of ~50 seconds (serial). All results
+    are then written back in a single DB session: one transaction for
+    mark_sent + notification log, instead of one per alert.
+    """
     counters = {"sent": 0, "failed": 0, "advanced": 0}
 
     async with get_session() as session:
         due = await collect_due(session)
 
-    for alert in due:
-        status = STATUS_SENT
-        error: str | None = None
-        try:
-            await send_message(
-                chat_id=alert.telegram_id,
-                text=build_alert_message(alert, timezone_name),
-            )
-            counters["sent"] += 1
-        except Exception as exc:  # noqa: BLE001 - Telegram errors are expected here
-            # only the exception class is stored: never echo user content
-            status = STATUS_FAILED
-            error = type(exc).__name__
-            counters["failed"] += 1
-            logger.warning(
-                "Reminder %s could not be delivered to %s (%s)",
-                alert.reminder_id,
-                alert.telegram_id,
-                error,
-            )
-
+    if not due:
         async with get_session() as session:
-            await ReminderNotificationRepository(session).mark_sent(
-                alert.notification_id, utcnow_naive()
-            )
-            await NotificationLogRepository(session).record(
+            counters["advanced"] = await advance_repeating(session)
+        return counters
+
+    semaphore = asyncio.Semaphore(_SEND_CONCURRENCY)
+    results: list[tuple[DueAlert, str, str | None]] = []
+
+    async def _send_one(alert: DueAlert) -> None:
+        async with semaphore:
+            status = STATUS_SENT
+            error: str | None = None
+            try:
+                await send_message(
+                    chat_id=alert.telegram_id,
+                    text=build_alert_message(alert, timezone_name),
+                )
+                counters["sent"] += 1
+            except Exception as exc:  # noqa: BLE001 - Telegram errors are expected here
+                status = STATUS_FAILED
+                error = type(exc).__name__
+                counters["failed"] += 1
+                logger.warning(
+                    "Reminder %s could not be delivered to %s (%s)",
+                    alert.reminder_id,
+                    alert.telegram_id,
+                    error,
+                )
+            results.append((alert, status, error))
+
+    await asyncio.gather(*(_send_one(a) for a in due))
+
+    # Batch write-back: one transaction for all mark_sent + notification logs.
+    now = utcnow_naive()
+    async with get_session() as session:
+        notif_repo = ReminderNotificationRepository(session)
+        log_repo = NotificationLogRepository(session)
+        for alert, status, error in results:
+            await notif_repo.mark_sent(alert.notification_id, now)
+            await log_repo.record(
                 user_id=alert.user_id,
                 notification_type=TYPE_REMINDER,
                 related_id=alert.reminder_id,
