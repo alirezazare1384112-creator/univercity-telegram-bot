@@ -10,7 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run the sweep
+        if: ${{ !cancelled() }}
         run: >
           curl -fsS -X POST
           -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
           https://univercity-telegram-bot.vercel.app/api/cron/tick
+
+      # GitHub's own schedule can take a long while to start firing on a
+      # brand-new workflow, so every manual run schedules its own successor.
+      # Scheduled runs do NOT chain, which keeps exactly one manual loop.
+      - name: Chain the next tick
+        if: ${{ github.event_name == 'workflow_dispatch' && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.TICK_PAT }}
+        run: |
+          sleep 300
+          gh workflow run tick.yml --ref main
