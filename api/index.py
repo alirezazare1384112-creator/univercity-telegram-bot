@@ -228,5 +228,21 @@ async def setup(key: str = "") -> dict[str, str]:
     return {"webhook": webhook_url, "status": "registered"}
 
 
-# Vercel looks for a module-level ASGI callable named ``app``.
-app = api
+# Vercel looks for a module-level ASGI callable named ``app``. Rewrites
+# hand the function the *destination* path (/api/index/<rest>), so wrap the
+# app and normalize it back to /api/<rest> for every FastAPI route.
+class _VercelPathNormalize:
+    def __init__(self, asgi_app):
+        self._app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path == "/api/index":
+                scope["path"] = "/api/health"
+            elif path.startswith("/api/index/"):
+                scope["path"] = "/api/" + path[len("/api/index/") :]
+        await self._app(scope, receive, send)
+
+
+app = _VercelPathNormalize(api)
