@@ -125,41 +125,11 @@ def _require_bearer(authorization: str | None) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
+# Vercel serves the built Mini App from ``outputDirectory: public``
+# (buildCommand copies ``frontend/dist`` there). No in-function SPA route:
+# a GET ``/{full_path:path}`` catch-all would shadow later GET routes
+# (``/api/setup``) whenever static files are present in the bundle.
 api: FastAPI = create_api(None, mount_spa=False)
-
-_STATIC_DIR = BASE_DIR / "public"
-
-
-def _is_api_path(path: str) -> bool:
-    return path == "/api" or path.startswith("/api/")
-
-
-@api.get("/{full_path:path}", include_in_schema=False)
-async def spa(full_path: str):
-    """Serve the built Mini App from the function bundle.
-
-    ``vercel.json`` copies ``frontend/dist`` into ``public/`` at build time.
-    Hashed assets get a year of caching; ``index.html`` must always be
-    revalidated so Telegram webviews do not keep a stale script bundle.
-    """
-    from fastapi.responses import FileResponse
-
-    if _is_api_path(full_path):
-        raise HTTPException(status_code=404)
-
-    requested = _STATIC_DIR / full_path if full_path else None
-    if requested is not None and requested.is_file():
-        cache = (
-            "public, max-age=31536000, immutable"
-            if full_path.startswith("assets/")
-            else "no-store"
-        )
-        return FileResponse(requested, headers={"Cache-Control": cache})
-
-    index = _STATIC_DIR / "index.html"
-    if index.is_file():
-        return FileResponse(index, headers={"Cache-Control": "no-store"})
-    return JSONResponse({"detail": "Not Found"}, status_code=404)
 
 
 @api.middleware("http")

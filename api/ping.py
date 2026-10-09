@@ -16,7 +16,12 @@ from fastapi import FastAPI
 app = FastAPI()
 
 
+# Vercel invokes this module as ``/api/index/ping`` (the platform always
+# prefixes non-root files with ``/api/index``). Declare the bare path too so
+# the handler matches whatever scope the platform hands us.
+@app.get("/ping")
 @app.get("/api/ping")
+@app.get("/api/index/ping")
 async def ping() -> dict:
     cwd = Path.cwd()
     try:
