@@ -144,9 +144,9 @@ async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
     results: dict[str, object] = {}
     try:
         results["reminders"] = await run_one_cycle(application)
-    except Exception:
+    except Exception as exc:
         logger.exception("sweep: reminder cycle failed")
-        results["reminders"] = "failed"
+        results["reminders"] = f"failed: {type(exc).__name__}: {exc}"[:300]
 
     if with_sync:
         try:
@@ -154,16 +154,18 @@ async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
             if imported:
                 logger.info("sweep: eitaa imported %s post(s)", imported)
             results["eitaa"] = imported
-        except Exception:
+        except Exception as exc:
             logger.exception("sweep: eitaa sync failed")
+            results["eitaa"] = f"failed: {type(exc).__name__}: {exc}"[:300]
 
         try:
             notified = await run_user_channel_sync(application)
             if notified:
                 logger.info("sweep: user channels notified %s", notified)
             results["user_channels"] = {str(k): v for k, v in notified.items()}
-        except Exception:
+        except Exception as exc:
             logger.exception("sweep: user channel sync failed")
+            results["user_channels"] = f"failed: {type(exc).__name__}: {exc}"[:300]
     return results
 
 
