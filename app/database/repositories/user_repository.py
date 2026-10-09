@@ -27,6 +27,7 @@ class UserRepository:
         username: str | None,
         first_name: str | None,
         last_name: str | None,
+        photo_url: str | None = None,
     ) -> tuple[User, bool]:
         """Upsert in a single SELECT; returns ``(user, created)``."""
         user = await self.get_by_telegram_id(telegram_id)
@@ -37,6 +38,7 @@ class UserRepository:
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
+                photo_url=photo_url,
                 is_active=True,
             )
             self._session.add(user)
@@ -44,6 +46,12 @@ class UserRepository:
             user.username = username
             user.first_name = first_name
             user.last_name = last_name
+            # Telegram only includes photo_url when the user has a profile
+            # photo; absent != cleared, so we only overwrite when a value
+            # is provided. The URL rotates on each initData so we always
+            # store the freshest signed URL.
+            if photo_url is not None:
+                user.photo_url = photo_url
             user.is_active = True
         await self._session.flush()
         return user, created
@@ -55,6 +63,7 @@ class UserRepository:
         username: str | None,
         first_name: str | None,
         last_name: str | None,
+        photo_url: str | None = None,
     ) -> User:
         """Create the user on first contact, refresh profile data later."""
         user, _ = await self.get_or_create_from_telegram(
@@ -62,6 +71,7 @@ class UserRepository:
             username=username,
             first_name=first_name,
             last_name=last_name,
+            photo_url=photo_url,
         )
         return user
 

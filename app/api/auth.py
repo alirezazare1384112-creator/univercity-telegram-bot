@@ -87,7 +87,13 @@ def parse_init_user(fields: dict[str, str]) -> dict:
 
 
 async def user_from_init_data(init_data: str) -> User:
-    """Verify an initData string and return the shared User row."""
+    """Verify an initData string and return the shared User row.
+
+    Telegram includes ``photo_url`` in the user object when the account
+    has a profile photo. The URL is part of the signed initData, so it
+    is safe to trust and store. Telegram rotates the URL on each
+    initData, so we always store the freshest copy.
+    """
     settings = get_settings()
     try:
         fields = verify_init_data(
@@ -105,6 +111,7 @@ async def user_from_init_data(init_data: str) -> User:
             username=user_data.get("username"),
             first_name=user_data.get("first_name"),
             last_name=user_data.get("last_name"),
+            photo_url=user_data.get("photo_url"),
         )
     return user
 
