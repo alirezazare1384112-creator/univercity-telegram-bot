@@ -76,6 +76,31 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await answer(update, context, HELP_TEXT, reply_markup=main_menu_keyboard())
 
 
+async def cmd_mini_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The keyboard's Mini App label: reply with the inline web_app button.
+
+    Reply-keyboard ``web_app`` buttons open without ``initData`` on some
+    Android clients (the connect screen appears), so the keyboard button is
+    text and the bot answers with the inline button, which always carries
+    the auth data - no /start needed.
+    """
+    inline = mini_app_inline_keyboard()
+    if inline is None:
+        await answer(
+            update,
+            context,
+            "مینی‌اپ فعلاً در دسترس نیست؛ بعداً دوباره تلاش کن.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+    await answer(
+        update,
+        context,
+        "روی دکمهٔ زیر بزن تا مینی‌اپ باز شود 👇",
+        reply_markup=inline,
+    )
+
+
 async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Unknown text: guide the user instead of ignoring him."""
     await answer(

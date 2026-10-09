@@ -39,6 +39,7 @@ from app.bot.handlers import (
     start,
 )
 from app.bot.helpers import open_exclusive
+from app.bot.keyboards.main_menu import MINI_APP
 from app.bot.middlewares import capture_user
 
 
@@ -87,6 +88,17 @@ def register_handlers(app: Application) -> None:
         group=0,
     )
     app.add_handler(CommandHandler("help", start.cmd_help), group=0)
+    # the keyboard's Mini App label answers with the inline web_app button;
+    # registered with the core entries so it also wins inside a wizard
+    app.add_handler(
+        open_exclusive(
+            MessageHandler(
+                filters.Text([MINI_APP]) & ~filters.COMMAND, start.cmd_mini_app
+            ),
+            conversations,
+        ),
+        group=0,
+    )
 
     # --- features (each phase appends its own registration here) ------
     gpa.register(app, conversations)

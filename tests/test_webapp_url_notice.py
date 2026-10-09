@@ -56,10 +56,7 @@ async def test_url_change_notifies_every_user_exactly_once(
     assert application.bot.send_message.await_count == 2
     kwargs = application.bot.send_message.await_args.kwargs
     assert kwargs["reply_markup"].keyboard[0][0].text == MINI_APP
-    assert (
-        kwargs["reply_markup"].keyboard[0][0].web_app.url
-        == "https://new-url.trycloudflare.com"
-    )
+    assert kwargs["reply_markup"].keyboard[0][0].web_app is None
     assert marker.read_text(encoding="utf-8") == "https://new-url.trycloudflare.com"
 
     # same address again: nothing is pushed

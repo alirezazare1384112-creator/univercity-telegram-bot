@@ -51,9 +51,10 @@ def menu_buttons_filter() -> filters.Filter:
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     """The permanent main menu of the bot.
 
-    When ``WEBAPP_URL`` points at an https address, the first row becomes a
-    Telegram WebApp button that opens the Mini App (bot API rejects plain
-    http or non-url values, so those are ignored).
+    The Mini App entry is a plain text button: some Android clients open
+    reply-keyboard ``web_app`` buttons without ``initData`` and land on the
+    connect screen, so the button asks the bot for an inline ``web_app``
+    button instead (see ``cmd_mini_app``) - one extra tap, works everywhere.
     """
     rows: list[list[str | KeyboardButton]] = [
         [SCHEDULE],
@@ -65,19 +66,15 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     ]
     webapp_url = get_settings().webapp_url
     if webapp_url.startswith("https://"):
-        rows.insert(
-            0,
-            [KeyboardButton(MINI_APP, web_app=WebAppInfo(url=webapp_url))],
-        )
+        rows.insert(0, [MINI_APP])
     return reply_keyboard(rows)
 
 
 def mini_app_inline_keyboard() -> InlineKeyboardMarkup | None:
     """Inline variant of the Mini App button.
 
-    Some Android clients open reply-keyboard WebApp buttons without auth
-    data (empty ``initData``); inline ``web_app`` buttons are the
-    longest-supported path, so /start offers both.
+    This is the longest-supported path: it always carries ``initData``, so
+    ``/start`` and the keyboard's Mini App button both offer it.
     """
     webapp_url = get_settings().webapp_url
     if not webapp_url.startswith("https://"):
