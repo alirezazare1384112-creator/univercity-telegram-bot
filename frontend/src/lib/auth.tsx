@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,30 +24,75 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Fire-and-forget diagnostics beacon (survives page close, no auth). */
+function reportBoot(payload: Record<string, unknown>): void {
+  try {
+    navigator.sendBeacon(
+      "/api/boot-report",
+      new Blob([JSON.stringify(payload)], { type: "application/json" }),
+    );
+  } catch {
+    // diagnostics must never break the app
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const attemptRef = useRef(0);
 
   const retry = useCallback(() => {
+    const attempt = ++attemptRef.current;
     setState({ status: "loading" });
-    const webApp = initTelegram();
-    if (!webApp?.initData) {
+
+    const probe = (round: number) => {
+      if (attemptRef.current !== attempt) return;
+      const webApp = initTelegram();
+      if (round === 0) {
+        reportBoot({
+          event: "probe",
+          telegram: Boolean(webApp),
+          initDataLen: webApp?.initData?.length ?? 0,
+          platform: webApp?.platform ?? null,
+          version: webApp?.version ?? null,
+          hashLen: window.location.hash.length,
+          ua: navigator.userAgent,
+        });
+      }
+      if (webApp?.initData) {
+        api
+          .me()
+          .then((user) => {
+            if (attemptRef.current !== attempt) return;
+            setState({ status: "ready", user });
+            webApp.HapticFeedback?.notificationOccurred("success");
+          })
+          .catch((error: unknown) => {
+            if (attemptRef.current !== attempt) return;
+            const message =
+              error instanceof ApiError
+                ? `احراز هویت ناموفق: ${error.message}`
+                : "ارتباط با سرور برقرار نشد";
+            reportBoot({
+              event: "me-failed",
+              status: error instanceof ApiError ? error.status : 0,
+              message,
+            });
+            setState({ status: "error", message });
+            webApp.HapticFeedback?.notificationOccurred("error");
+          });
+        return;
+      }
+      // Some Android clients deliver initData a moment after page load;
+      // probe for ~8s before concluding the app was opened without auth data.
+      if (round < 26) {
+        window.setTimeout(() => probe(round + 1), 300);
+        return;
+      }
+      reportBoot({ event: "guest", initDataLen: 0 });
       setState({ status: "guest" });
-      return;
-    }
-    api
-      .me()
-      .then((user) => {
-        setState({ status: "ready", user });
-        webApp.HapticFeedback?.notificationOccurred("success");
-      })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof ApiError
-            ? `احراز هویت ناموفق: ${error.message}`
-            : "ارتباط با سرور برقرار نشد";
-        setState({ status: "error", message });
-        webApp.HapticFeedback?.notificationOccurred("error");
-      });
+    };
+
+    probe(0);
   }, []);
 
   useEffect(() => {

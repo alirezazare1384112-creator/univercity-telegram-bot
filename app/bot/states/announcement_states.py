@@ -12,3 +12,7 @@ class AnnouncementState(Enum):
     DETAIL = "announcements_detail"
     # waiting for the forwarded post (or typed text) to be saved
     WAITING = "announcements_waiting"
+    # the student's own channel subscription list
+    CHANNELS = "announcements_channels"
+    # waiting for a channel link to subscribe to
+    CHANNEL_ADD = "announcements_channel_add"

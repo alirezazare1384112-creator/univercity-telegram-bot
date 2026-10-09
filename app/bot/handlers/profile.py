@@ -75,16 +75,11 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await answer(update, context, "ابتدا /start را بزن تا ثبت نامت انجام شود.")
         return ConversationHandler.END
 
+    # always offer the inline edit buttons: entering from the menu (a text
+    # message) used to show "pick an option" with no option to press
     if update.callback_query is not None:
         await update.callback_query.answer()
-        await answer(update, context, _profile_text(user), reply_markup=_edit_keyboard())
-    else:
-        await answer(
-            update,
-            context,
-            _profile_text(user),
-            reply_markup=reply_keyboard([[PROFILE, BACK]]),
-        )
+    await answer(update, context, _profile_text(user), reply_markup=_edit_keyboard())
     return ProfileState.CHOOSING_FIELD
 
 

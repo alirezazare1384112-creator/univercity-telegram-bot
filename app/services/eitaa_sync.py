@@ -35,14 +35,11 @@ logger = logging.getLogger(__name__)
 FETCH_TIMEOUT_SECONDS = 20.0
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
-# one chunk per <div class="etme_widget_message_wrap ..."> (i.e. one post)
-_CHUNK_RE = re.compile(r'(?=<div class="etme_widget_message_wrap)')
+# one chunk per message wrapper div (i.e. one post); the class prefix differs
+# per site - Eitaa uses ``etme_widget_message_*`` (a Telegram clone) and
+# Telegram's public ``/s/`` preview uses ``tgme_widget_message_*``
 _DATA_POST_RE = re.compile(r'data-post="([^"]+)"')
 _TIME_RE = re.compile(r'<time datetime="([^"]+)"')
-_TEXT_RE = re.compile(
-    r'<div class="etme_widget_message_text js-message_text"[^>]*>(.*?)</div>',
-    re.S,
-)
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 _BLANK_LINES_RE = re.compile(r"\n{3,}")
@@ -84,14 +81,25 @@ def _published_at(raw: str) -> datetime | None:
     return moment.astimezone(UTC).replace(tzinfo=None)
 
 
-def parse_posts(page_html: str, *, channel_url: str) -> list[EitaaPost]:
-    """Text posts of one channel page; media-only posts are skipped."""
+def parse_posts(
+    page_html: str, *, channel_url: str, widget: str = "etme"
+) -> list[EitaaPost]:
+    """Text posts of one channel page; media-only posts are skipped.
+
+    ``widget`` is the CSS class prefix of the site markup: ``etme`` for
+    Eitaa, ``tgme`` for Telegram's public channel preview.
+    """
     parsed = urlparse(channel_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
+    chunk_re = re.compile(f'(?=<div class="{widget}_widget_message_wrap)')
+    text_re = re.compile(
+        rf'<div class="{widget}_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+        re.S,
+    )
     posts: list[EitaaPost] = []
-    for chunk in _CHUNK_RE.split(page_html):
+    for chunk in chunk_re.split(page_html):
         ref_match = _DATA_POST_RE.search(chunk)
-        text_match = _TEXT_RE.search(chunk)
+        text_match = text_re.search(chunk)
         if ref_match is None or text_match is None:
             continue
         text = _clean_text(text_match.group(1))
@@ -109,16 +117,45 @@ def parse_posts(page_html: str, *, channel_url: str) -> list[EitaaPost]:
     return posts
 
 
-async def fetch_channel_html(channel_url: str) -> str:
-    """GET the public channel page (the only Eitaa interface that exists)."""
+async def fetch_channel_html(channel_url: str, *, trust_env: bool = False) -> str:
+    """GET the public channel page (the only Eitaa interface that exists).
+
+    ``trust_env`` opts into the process-wide HTTP proxy: public ``t.me``
+    previews need it on networks where Telegram is blocked, while Eitaa
+    pages are fetched directly.
+    """
     async with httpx.AsyncClient(
         follow_redirects=True,
         timeout=FETCH_TIMEOUT_SECONDS,
         headers={"User-Agent": _USER_AGENT},
+        trust_env=trust_env,
     ) as client:
         response = await client.get(channel_url)
         response.raise_for_status()
         return response.text
+
+
+async def import_for_user(
+    session, user_id: int, posts: Sequence[EitaaPost], *, source: str
+) -> int:
+    """Copy the posts the user does not have yet; returns rows added."""
+    announcements = AnnouncementRepository(session)
+    urls = [post.url for post in posts]
+    existing = await announcements.existing_source_urls(user_id, urls)
+    created = 0
+    for post in posts:
+        if post.url in existing:
+            continue
+        await announcements.create(
+            user_id=user_id,
+            title=_title_from(post.text),
+            source=source,
+            text=post.text,
+            source_url=post.url,
+            created_at=post.published_at,
+        )
+        created += 1
+    return created
 
 
 async def import_posts(page_html: str, *, channel_url: str) -> int:
@@ -127,25 +164,13 @@ async def import_posts(page_html: str, *, channel_url: str) -> int:
     if not posts:
         return 0
 
-    urls = [post.url for post in posts]
     created = 0
     async with get_session() as session:
-        announcements = AnnouncementRepository(session)
         user_ids = await UserRepository(session).list_active_ids()
         for user_id in user_ids:
-            existing = await announcements.existing_source_urls(user_id, urls)
-            for post in posts:
-                if post.url in existing:
-                    continue
-                await announcements.create(
-                    user_id=user_id,
-                    title=_title_from(post.text),
-                    source=ANNOUNCEMENT_EITAA,
-                    text=post.text,
-                    source_url=post.url,
-                    created_at=post.published_at,
-                )
-                created += 1
+            created += await import_for_user(
+                session, user_id, posts, source=ANNOUNCEMENT_EITAA
+            )
     if created:
         logger.info("Imported %d eitaa post(s) from %s", created, channel_url)
     return created

@@ -43,7 +43,18 @@ export default function ConnectPage({ state, onRetry }: Props) {
         هویت انجام شود.
       </p>
       <Diagnostics />
-      <p className="text-xs opacity-70">
+      <button
+        type="button"
+        onClick={onRetry}
+        className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white active:opacity-80"
+      >
+        🔄 تلاش دوباره
+      </button>
+      <p className="text-xs leading-5 opacity-70">
+        اگر باز هم همین صفحه آمد: در تلگرام دستور <b>/start</b> را بزن و روی
+        دکمهٔ «📱 باز کردن مینی‌اپ» <b>داخل پیام</b> بزن — نه دکمهٔ کیبورد.
+      </p>
+      <p className="text-xs opacity-60">
         برای توسعه: ربات را اجرا کنید و در تلگرام دکمهٔ Mini App را بزنید.
       </p>
     </section>

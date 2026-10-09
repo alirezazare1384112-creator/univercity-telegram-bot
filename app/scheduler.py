@@ -1,4 +1,5 @@
-"""Background scheduler: delivers due reminders and syncs Eitaa channels.
+"""Background scheduler: delivers due reminders, syncs Eitaa channels and
+imports posts of user-subscribed channels.
 
 Why a database poller instead of ``JobQueue``:
 
@@ -14,10 +15,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from pathlib import Path
 
+from sqlalchemy import select
 from telegram.ext import Application
 
+from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.config import get_settings
+from app.database.database import get_session
+from app.database.models.user import User
+from app.services.channel_sync import new_posts_notice, sync_user_channels
 from app.services.eitaa_sync import sync_channels
 from app.services.reminder_service import process_due_notifications
 
@@ -25,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 POLL_SECONDS = 30
 _TASK_KEY = "reminder_poller_task"
+# last WEBAPP_URL delivered to users (quick tunnels rotate the address)
+_WEBAPP_URL_MARKER = Path("data/webapp_url")
 
 
 async def run_one_cycle(application: Application) -> dict[str, int]:
@@ -35,12 +44,71 @@ async def run_one_cycle(application: Application) -> dict[str, int]:
     )
 
 
+async def run_webapp_url_notice(
+    application: Application, marker: Path | None = None
+) -> bool:
+    """Push a fresh main menu when the Mini App address changed.
+
+    ``web_app`` buttons embed their URL at send time and never ping the
+    bot, so after a tunnel rotation users keep tapping a dead link until
+    something re-renders their keyboard. Compares ``WEBAPP_URL`` with the
+    last address we delivered (``data/webapp_url``) and, when it differs,
+    sends every user the menu again - one message per rotation.
+    """
+    url = get_settings().webapp_url
+    if not url.startswith("https://"):
+        return False
+    marker = marker or _WEBAPP_URL_MARKER
+    try:
+        last = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
+    except OSError:
+        last = ""
+    if last == url:
+        return False
+
+    async with get_session() as session:
+        telegram_ids = [
+            row[0] for row in (await session.execute(select(User.telegram_id))).all()
+        ]
+    text = "📱 لینک مینی‌اپ به‌روزرسانی شد.\nاز دکمهٔ زیر استفاده کن:"
+    markup = main_menu_keyboard()
+    sent = 0
+    for telegram_id in telegram_ids:
+        try:
+            await application.bot.send_message(
+                chat_id=telegram_id, text=text, reply_markup=markup
+            )
+            sent += 1
+        except Exception:
+            logger.exception("Could not send the webapp link update to %s", telegram_id)
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(url, encoding="utf-8")
+    except OSError:
+        logger.exception("Could not remember the webapp url")
+    logger.info("Webapp url notice sent to %s user(s)", sent)
+    return True
+
+
 async def run_eitaa_sync() -> int:
     """Import new posts of the configured channels (0 when none configured)."""
     settings = get_settings()
     if not settings.eitaa_sync_urls:
         return 0
     return await sync_channels(settings.eitaa_sync_urls)
+
+
+async def run_user_channel_sync(application: Application) -> dict[int, int]:
+    """Import posts of user-subscribed channels and push one notice each."""
+    counts = await sync_user_channels()
+    for telegram_id, count in counts.items():
+        try:
+            await application.bot.send_message(
+                chat_id=telegram_id, text=new_posts_notice(count)
+            )
+        except Exception:
+            logger.exception("Could not notify %s about %s new post(s)", telegram_id, count)
+    return counts
 
 
 async def _poller_loop(application: Application) -> None:
@@ -70,6 +138,15 @@ async def _poller_loop(application: Application) -> None:
             except Exception:
                 logger.exception("Eitaa sync cycle failed")
 
+            try:
+                notified = await run_user_channel_sync(application)
+                if notified:
+                    logger.info("User-channel sync notified %s", notified)
+            except asyncio.CancelledError:  # pragma: no cover - shutdown path
+                raise
+            except Exception:
+                logger.exception("User-channel sync cycle failed")
+
 
 async def start_scheduler(application: Application) -> None:
     """Start polling (called by PTB after the bot is initialized)."""
@@ -87,6 +164,20 @@ async def start_scheduler(application: Application) -> None:
             logger.info("Scheduler started (eitaa import: %s)", imported)
     except Exception:
         logger.exception("Initial eitaa sync failed")
+
+    # same for the channels each student subscribed to individually
+    try:
+        notified = await run_user_channel_sync(application)
+        if notified:
+            logger.info("Scheduler started (user channels: %s)", notified)
+    except Exception:
+        logger.exception("Initial user-channel sync failed")
+
+    # if the tunnel gave the Mini App a new address, refresh every menu
+    try:
+        await run_webapp_url_notice(application)
+    except Exception:
+        logger.exception("Webapp url notice failed")
 
     application.bot_data[_TASK_KEY] = asyncio.create_task(_poller_loop(application))
 

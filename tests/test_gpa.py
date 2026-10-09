@@ -66,7 +66,7 @@ async def test_gpa_prefers_the_mini_app_page_when_webapp_is_configured(db, monke
     markup = context.last_markup
     button = markup.inline_keyboard[0][0]
     assert button.web_app is not None
-    assert button.web_app.url == "https://bot.example.com/app/#/gpa"
+    assert button.web_app.url == "https://bot.example.com/app/?page=gpa"
     back = markup.inline_keyboard[1][0]
     assert back.callback_data == "gpa:back"
     # the built-in page wins over the external calculator

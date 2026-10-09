@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
-import type { Announcement } from "../lib/types";
+import type { Announcement, AnnouncementChannel } from "../lib/types";
 
 type PageState =
   | { kind: "loading" }
@@ -31,6 +31,10 @@ export default function AnnouncementsPage() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [previews, setPreviews] = useState<Record<number, Preview>>({});
   const [loadingPreview, setLoadingPreview] = useState<number | null>(null);
+  const [channels, setChannels] = useState<AnnouncementChannel[]>([]);
+  const [channelDraft, setChannelDraft] = useState("");
+  const [addingChannel, setAddingChannel] = useState(false);
+  const [channelError, setChannelError] = useState<string | null>(null);
   const previewsRef = useRef(previews);
   previewsRef.current = previews;
 
@@ -45,9 +49,18 @@ export default function AnnouncementsPage() {
     }
   }, []);
 
+  const loadChannels = useCallback(async () => {
+    try {
+      setChannels(await api.channels());
+    } catch {
+      // the channel section is optional; the list below still works
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadChannels();
+  }, [load, loadChannels]);
 
   useEffect(() => {
     const current = previewsRef;
@@ -66,6 +79,35 @@ export default function AnnouncementsPage() {
       await load();
     } catch (error: unknown) {
       setBanner(errorMessage(error));
+      haptic("error");
+    }
+  };
+
+  const addChannel = async () => {
+    const url = channelDraft.trim();
+    if (!url) return;
+    setAddingChannel(true);
+    setChannelError(null);
+    try {
+      await api.addChannel(url);
+      setChannelDraft("");
+      haptic("success");
+      await loadChannels();
+    } catch (error: unknown) {
+      setChannelError(errorMessage(error));
+      haptic("error");
+    } finally {
+      setAddingChannel(false);
+    }
+  };
+
+  const removeChannel = async (id: number) => {
+    try {
+      await api.deleteChannel(id);
+      haptic("success");
+      await loadChannels();
+    } catch (error: unknown) {
+      setChannelError(errorMessage(error));
       haptic("error");
     }
   };
@@ -112,6 +154,69 @@ export default function AnnouncementsPage() {
         </span>
       </div>
 
+      <div className="rounded-2xl bg-black/5 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold">📡 کانال‌های خودکار</h2>
+          <span className="text-[11px] opacity-60">
+            {channels.length.toLocaleString("fa-IR")} کانال
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] leading-5 opacity-70">
+          لینک کانال ایتا یا تلگرامی‌ات را بده؛ پست‌های جدیدش خودکار به همین
+          لیست می‌آید و بهت اطلاع داده می‌شود.
+        </p>
+
+        {channels.length > 0 && (
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {channels.map((channel) => (
+              <li
+                key={channel.id}
+                className="flex items-center justify-between gap-2 rounded-xl bg-white/70 px-3 py-2 dark:bg-black/20"
+              >
+                <span className="min-w-0 truncate text-xs font-bold" dir="ltr">
+                  {channel.platform === "eitaa" ? "📮 " : "📨 "}
+                  {channel.handle}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void removeChannel(channel.id)}
+                  aria-label="حذف کانال"
+                  className="shrink-0 text-red-600/80 active:opacity-80"
+                >
+                  🗑
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-3 flex gap-2">
+          <input
+            value={channelDraft}
+            onChange={(event) => setChannelDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void addChannel();
+            }}
+            placeholder="https://t.me/… یا https://eitaa.com/…"
+            dir="ltr"
+            className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs dark:bg-black/20"
+          />
+          <button
+            type="button"
+            onClick={() => void addChannel()}
+            disabled={addingChannel || !channelDraft.trim()}
+            className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80 disabled:opacity-60"
+          >
+            {addingChannel ? "…" : "➕ افزودن"}
+          </button>
+        </div>
+        {channelError && (
+          <p className="mt-2 rounded-lg bg-red-600/10 px-2 py-1.5 text-center text-[11px] text-red-700">
+            {channelError}
+          </p>
+        )}
+      </div>
+
       {banner && (
         <p className="rounded-xl bg-red-600/10 px-3 py-2 text-center text-xs text-red-700">
           {banner}
@@ -122,7 +227,8 @@ export default function AnnouncementsPage() {
         <div className="rounded-2xl bg-black/5 p-8 text-center">
           <span className="text-4xl">📢</span>
           <p className="mt-2 text-sm opacity-70">
-            اطلاعیه‌ای ذخیره نکرده‌اید. پست‌های کانال را در ربات ذخیره کنید.
+            اطلاعیه‌ای نداری. پست کانال را در ربات ذخیره کن یا در بخش بالا
+            «کانال‌های خودکار» یک کانال اضافه کن تا خودکار بیاید.
           </p>
         </div>
       ) : (

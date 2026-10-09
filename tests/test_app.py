@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -112,3 +113,85 @@ async def test_serve_starts_and_stops_the_scheduler(monkeypatch):
     started.assert_awaited_once_with(fake_app)
     stopped.assert_awaited_once_with(fake_app)
     fake_app.shutdown.assert_awaited_once()
+
+
+async def test_boot_retries_until_it_works(monkeypatch):
+    """A blocked network must not kill the process: boot retries forever."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.main as main_module
+
+    initialize = AsyncMock(
+        side_effect=[RuntimeError("net down"), RuntimeError("net down"), None]
+    )
+    application = SimpleNamespace(
+        initialize=initialize,
+        updater=SimpleNamespace(start_polling=AsyncMock(), stop=AsyncMock()),
+        start=AsyncMock(),
+        stop=AsyncMock(),
+    )
+    monkeypatch.setattr(main_module, "_post_init", AsyncMock())
+    monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
+
+    state: dict[str, bool] = {}
+    await main_module._boot_forever(application, state)
+
+    assert initialize.await_count == 3
+    assert application.updater.start_polling.await_count == 1
+    assert application.start.await_count == 1
+    assert state == {"polling_started": True, "app_started": True}
+
+
+async def test_a_hung_boot_attempt_is_capped_and_retried(monkeypatch):
+    """A blackholed network must not hang one boot attempt forever."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.main as main_module
+
+    async def flaky_initialize() -> None:
+        if initialize_mock.await_count == 1:
+            await asyncio.Event().wait()  # first call never returns on its own
+
+    initialize_mock = AsyncMock(side_effect=flaky_initialize)
+    updater = SimpleNamespace(start_polling=AsyncMock(), stop=AsyncMock())
+    application = SimpleNamespace(
+        initialize=initialize_mock, updater=updater, start=AsyncMock(),
+        stop=AsyncMock(),
+    )
+    monkeypatch.setattr(main_module, "_BOOT_ATTEMPT_SECONDS", 0.05)
+    monkeypatch.setattr(main_module, "_post_init", AsyncMock())
+    monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
+
+    state: dict[str, bool] = {}
+    await main_module._boot_forever(application, state)
+
+    assert initialize_mock.await_count == 2
+    updater.stop.assert_awaited()
+
+
+async def test_scheduler_failure_does_not_retry_the_boot(monkeypatch):
+    """Post-init errors are logged; polling must stay up without retries."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import app.main as main_module
+
+    application = SimpleNamespace(
+        initialize=AsyncMock(return_value=None),
+        updater=SimpleNamespace(start_polling=AsyncMock(), stop=AsyncMock()),
+        start=AsyncMock(),
+        stop=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        main_module, "_post_init", AsyncMock(side_effect=RuntimeError("sched down"))
+    )
+    monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
+
+    state: dict[str, bool] = {}
+    await main_module._boot_forever(application, state)
+
+    assert application.initialize.await_count == 1
+    assert application.start.await_count == 1
+    assert state == {"polling_started": True, "app_started": True}

@@ -61,6 +61,7 @@ export default function ProfilePage() {
       semester: user.semester ?? "",
       bio: user.bio ?? "",
     });
+    setEditing(true);
   };
 
   const save = async () => {

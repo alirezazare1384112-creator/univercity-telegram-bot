@@ -2,6 +2,7 @@ import type {
   AdminStats,
   AdminUsers,
   Announcement,
+  AnnouncementChannel,
   CalendarEvent,
   CalendarEventInput,
   Course,
@@ -161,6 +162,16 @@ export const api = {
   announcementFile: (id: number) => requestBlob(`/api/announcements/${id}/file`),
   deleteAnnouncement: (id: number) =>
     request<{ deleted: boolean }>(`/api/announcements/${id}`, { method: "DELETE" }),
+  channels: () => request<AnnouncementChannel[]>("/api/announcements/channels"),
+  addChannel: (url: string) =>
+    request<AnnouncementChannel>(
+      "/api/announcements/channels",
+      jsonInit("POST", { url }),
+    ),
+  deleteChannel: (id: number) =>
+    request<{ deleted: boolean }>(`/api/announcements/channels/${id}`, {
+      method: "DELETE",
+    }),
   links: () => request<UniversityLink[]>("/api/links"),
   createLink: (payload: LinkInput) =>
     request<UniversityLink>("/api/links", jsonInit("POST", payload)),

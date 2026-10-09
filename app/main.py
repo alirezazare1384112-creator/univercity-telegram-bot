@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from telegram.ext import Application
@@ -15,6 +16,13 @@ from app.logging_config import setup_logging
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER_TOKEN_PREFIX = "000000000"
+# grace period for a boot that is about to finish (tests, quick Ctrl+C);
+# a bot stuck behind a dead network is cancelled after this
+_BOOT_GRACE_SECONDS = 5.0
+# one full boot attempt (initialize + start_polling + start + scheduler)
+# may not hang longer than this (blocked DNS, blackholed route); the retry
+# loop logs and starts a fresh attempt
+_BOOT_ATTEMPT_SECONDS = 60.0
 
 
 async def _post_init(application: Application) -> None:
@@ -136,8 +144,84 @@ def run_bot() -> None:
     )
 
 
+async def _boot_bot_once(application: Application, state: dict[str, bool]) -> None:
+    """One full boot attempt: initialize, start polling, start, scheduler."""
+    await application.initialize()
+    # a cancelled previous attempt may have left the updater mid-flight
+    with contextlib.suppress(Exception):
+        await application.updater.stop()
+    await application.updater.start_polling(drop_pending_updates=True)
+    state["polling_started"] = True
+    await application.start()
+    state["app_started"] = True
+    # PTB only runs post_init inside run_polling(); _serve() drives the
+    # lifecycle manually, so the scheduler must be started here explicitly.
+    try:
+        await _post_init(application)
+    except Exception:
+        logger.exception("Post-init (scheduler) failed; the bot stays up")
+
+
+async def _boot_forever(application: Application, state: dict[str, bool]) -> None:
+    """Endless boot retries for the Telegram side (API is already up).
+
+    A blackholed network can hang ``initialize()`` *or* ``start_polling``
+    (long TCP timeouts that swallow cancellation), so every attempt runs
+    as its own task with a hard time cap: a stuck attempt is abandoned,
+    cleaned up, and retried with backoff.
+    """
+    delay = 5.0
+    attempt = 0
+    while True:
+        attempt += 1
+        task = asyncio.create_task(_boot_bot_once(application, state))
+        done, _ = await asyncio.wait({task}, timeout=_BOOT_ATTEMPT_SECONDS)
+        if done:
+            error = task.exception()
+            if error is None:
+                return
+        else:
+            task.cancel()
+            task.add_done_callback(_eat_task_exception)
+            error = TimeoutError(f"boot attempt hung for {_BOOT_ATTEMPT_SECONDS}s")
+            with contextlib.suppress(Exception):
+                await application.updater.stop()
+            with contextlib.suppress(Exception):
+                await application.shutdown()
+            with contextlib.suppress(Exception):
+                await application.stop()
+        logger.warning(
+            "Bot boot failed (attempt %s): %s — retrying in %.0fs",
+            attempt,
+            error,
+            delay,
+        )
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 60.0)
+
+
+def _log_boot_failure(task: asyncio.Task) -> None:
+    """Surface a dead/hung boot task immediately, not only at shutdown."""
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.error("Bot boot failed", exc_info=error)
+
+
+def _eat_task_exception(task: asyncio.Task) -> None:
+    """Retrieve the exception of an abandoned attempt (avoids warnings)."""
+    if not task.cancelled():
+        task.exception()
+
+
 async def _serve(settings: Settings) -> None:
-    """Run PTB long polling and the FastAPI server in one event loop."""
+    """Run PTB long polling and the FastAPI server in one event loop.
+
+    The API boots first and stays up even when Telegram is unreachable;
+    the bot boots in the background (``_boot_forever``), so a
+    network outage can no longer take the Mini App down with it.
+    """
     import uvicorn
 
     from app.api import create_api
@@ -148,12 +232,7 @@ async def _serve(settings: Settings) -> None:
         settings.api_port,
     )
     application = build_application()
-    await application.initialize()
-    await application.updater.start_polling(drop_pending_updates=True)
-    await application.start()
-    # PTB only runs post_init inside run_polling(); _serve() drives the
-    # lifecycle manually, so the scheduler must be started here explicitly.
-    await _post_init(application)
+    state: dict[str, bool] = {}
 
     server = uvicorn.Server(
         uvicorn.Config(
@@ -163,13 +242,27 @@ async def _serve(settings: Settings) -> None:
             log_level=settings.log_level.lower(),
         )
     )
+    bot_task = asyncio.create_task(_boot_forever(application, state))
+    bot_task.add_done_callback(_log_boot_failure)
     try:
         await server.serve()
     finally:
-        await application.updater.stop()
-        await application.stop()
-        await _post_shutdown(application)
-        await application.shutdown()
+        # give a boot that is about to finish a moment to complete
+        await asyncio.wait({bot_task}, timeout=_BOOT_GRACE_SECONDS)
+        if not bot_task.done():
+            bot_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await bot_task
+        if state.get("polling_started"):
+            with contextlib.suppress(Exception):
+                await application.updater.stop()
+        if state.get("app_started"):
+            with contextlib.suppress(Exception):
+                await application.stop()
+            with contextlib.suppress(Exception):
+                await _post_shutdown(application)
+            with contextlib.suppress(Exception):
+                await application.shutdown()
 
 
 def run_services() -> None:

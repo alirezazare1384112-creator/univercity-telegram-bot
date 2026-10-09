@@ -242,6 +242,14 @@ export interface Announcement {
   display: string;
 }
 
+export interface AnnouncementChannel {
+  id: number;
+  platform: "telegram" | "eitaa";
+  url: string;
+  handle: string;
+  created_at: string;
+}
+
 export interface UniversityLink {
   id: number;
   title: string;

@@ -16,6 +16,7 @@ from app.database.models.notification import NotificationLog
 from app.database.models.reminder import Reminder, ReminderNotification
 from app.database.models.schedule import WeeklySchedule
 from app.database.models.user import User
+from app.database.models.user_channel import UserChannel
 
 __all__ = [
     "Admin",
@@ -30,6 +31,7 @@ __all__ = [
     "ReminderNotification",
     "UniversityLink",
     "User",
+    "UserChannel",
     "WeeklySchedule",
     "utcnow",
 ]

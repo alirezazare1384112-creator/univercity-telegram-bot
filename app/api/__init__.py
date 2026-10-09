@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import math
 import time
 from collections import deque
@@ -189,6 +191,24 @@ def create_api(application: Application | None = None) -> FastAPI:
     @api.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @api.post("/api/boot-report")
+    async def boot_report(request: Request) -> dict[str, str]:
+        """Public diagnostics beacon: what the Mini App client sees.
+
+        The frontend fires this on boot (even without initData) so a blank
+        screen in a user's Telegram can be diagnosed from server logs.
+        """
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - malformed beacon is not an error
+            body = {}
+        logging.getLogger(__name__).info(
+            "boot-report ua=%s body=%s",
+            request.headers.get("user-agent", "?"),
+            json.dumps(body, ensure_ascii=False)[:600],
+        )
+        return {"ok": "1"}
 
     # Production: serve the built Mini App from frontend/dist (SPA fallback).
     # In dev the Vite server answers on :5173, so a missing dist/ is fine.

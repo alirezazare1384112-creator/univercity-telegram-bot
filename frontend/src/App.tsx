@@ -43,10 +43,26 @@ function BackButtonController() {
   return null;
 }
 
+function DeepLinkController() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const page = new URLSearchParams(window.location.search).get("page");
+    if (!page || !/^[a-z-]+$/.test(page)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("page");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    navigate(`/${page}`, { replace: true });
+  }, [navigate]);
+
+  return null;
+}
+
 function Shell() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-md flex-col">
       <BackButtonController />
+      <DeepLinkController />
       <main className="flex-1 p-4 pb-24">
         <Suspense fallback={<Spinner />}>
           <Routes>

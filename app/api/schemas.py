@@ -392,6 +392,28 @@ class AnnouncementOut(BaseModel):
     display: str
 
 
+class ChannelIn(BaseModel):
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def _strip_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("url is required")
+        if len(value) > 255:
+            raise ValueError("url is too long")
+        return value
+
+
+class ChannelOut(BaseModel):
+    id: int
+    platform: str
+    url: str
+    handle: str
+    created_at: datetime
+
+
 class LinkIn(BaseModel):
     title: str
     url: str

@@ -1,6 +1,8 @@
 """🧮 محاسبه معدل - open the built-in GPA page inside the Mini App.
 
-Primary path: ``{WEBAPP_URL}/#/gpa`` (the calculator shipped with the Mini App).
+Primary path: ``{WEBAPP_URL}/?page=gpa`` (the calculator shipped with the Mini App).
+A query is used instead of ``/#/gpa`` because some Android WebViews append
+``#tgWebAppData=...`` to the URL and a pre-existing hash breaks initData parsing.
 Fallback: ``GPA_CALCULATOR_URL`` from ``.env`` when no https WEBAPP_URL exists.
 Neither URL is ever hard-coded in the source.
 """
@@ -41,7 +43,7 @@ def _mini_app_url(webapp_url: str) -> str:
     """GPA route of the Mini App for an https WEBAPP_URL, else empty string."""
     if not webapp_url.startswith("https://"):
         return ""
-    return f"{webapp_url}/#/gpa"
+    return f"{webapp_url}/?page=gpa"
 
 
 async def gpa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

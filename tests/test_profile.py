@@ -30,6 +30,10 @@ async def test_profile_shows_empty_fields(db):
     assert "پروفایل دانشجویی" in text
     assert "—" in text  # empty values are visible as a dash
     assert context.last_markup is not None  # edit buttons offered
+    # the menu entry must carry the inline edit buttons (regression: the
+    # text used to say "pick an option" while only a BACK keyboard showed)
+    first = context.last_markup.inline_keyboard[0][0]
+    assert first.callback_data == "profile:field:student_number"
 
 
 async def test_full_edit_flow_saves_the_value(db):

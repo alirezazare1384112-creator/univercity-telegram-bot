@@ -48,7 +48,8 @@ from app.database.models.announcement import (
     ANNOUNCEMENT_TELEGRAM,
     MAX_TEXT_LENGTH,
 )
-from app.database.repositories import AnnouncementRepository
+from app.database.repositories import AnnouncementRepository, UserChannelRepository
+from app.services.channel_sync import normalize_channel_url
 from app.utils.datetime_utils import format_jalali
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,27 @@ logger = logging.getLogger(__name__)
 ADD_POST = "➕ ذخیره اطلاعیه"
 SRC_TELEGRAM = "📨 از تلگرام"
 SRC_EITAA = "📮 از ایتا"
+MY_CHANNELS = "📡 کانال‌های من"
+ADD_CHANNEL = "➕ افزودن کانال"
+NO_CHANNELS = (
+    "هنوز کانالی اضافه نکرده‌ای.\n"
+    f"با دکمهٔ «{ADD_CHANNEL}» لینک کانال ایتا یا تلگرامی‌ات را بفرست تا "
+    "پست‌های جدیدش خودکار به اطلاعیه‌هایت بیاید."
+)
+PROMPT_ADD_CHANNEL = (
+    "لینک کانال را بفرست:\n"
+    "📮 ایتا: https://eitaa.com/namakanel\n"
+    "📨 تلگرام: https://t.me/namakanel\n\n"
+    "هر چند دقیقه پست‌های جدید کانال خودکار به اطلاعیه‌هایت اضافه می‌شود "
+    "و بهت اطلاع داده می‌شود.\n"
+    f"برای انصراف «{CANCEL}» را بزن."
+)
+CHANNEL_SAVED = "✅ کانال «{handle}» اضافه شد.\nتا چند دقیقه پست‌های جدیدش خودکار می‌آید."
+CHANNEL_EXISTS = "این کانال قبلاً در لیست تو هست."
+CHANNEL_INVALID = (
+    "این لینک معتبر نیست. لینک کامل کانال را بفرست "
+    "(مثلاً https://t.me/yaad یا https://eitaa.com/yaad)."
+)
 NO_POSTS = (
     "هنوز اطلاعیه‌ای ذخیره نکرده‌ای.\n"
     f"با دکمه «{ADD_POST}» اولین پیام کانال را اضافه کن."
@@ -190,6 +212,7 @@ def _menu_keyboard(announcements: list) -> InlineKeyboardMarkup:
         for item in announcements
     ]
     rows.append([(ADD_POST, "ann:add")])
+    rows.append([(MY_CHANNELS, "ann:ch")])
     keyboard = list(inline_buttons(rows).inline_keyboard)
     keyboard.append(
         [InlineKeyboardButton(label, url=url) for label, url in EITAA_CHANNELS]
@@ -221,6 +244,22 @@ def _waiting_keyboard():
             [(CANCEL, "ann:cancel")],
         ]
     )
+
+
+def _channels_keyboard(channels: list) -> InlineKeyboardMarkup:
+    rows: list[list[tuple[str, str]]] = [
+        [(f"🗑 {channel.handle[:40]}", f"ann:chdel:{channel.id}")]
+        for channel in channels
+    ]
+    rows.append([(ADD_CHANNEL, "ann:chadd")])
+    rows.append(
+        [("🔙 لیست اطلاعیه‌ها", "ann:list"), ("🔙 منوی اصلی", "ann:exit")]
+    )
+    return inline_buttons(rows)
+
+
+def _add_channel_prompt_keyboard():
+    return inline_buttons([[(CANCEL, "ann:chcancel")]])
 
 
 # --- screens ------------------------------------------------------------
@@ -349,6 +388,101 @@ async def on_source_clicked(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = PROMPT_EITAA if source == ANNOUNCEMENT_EITAA else PROMPT_TELEGRAM
     await answer(update, context, prompt, reply_markup=_waiting_keyboard())
     return AnnouncementState.WAITING
+
+
+# --- my channels (per-user subscriptions) --------------------------------
+async def _show_channels(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    async with get_session() as session:
+        channels = await UserChannelRepository(session).list_by_user(user_id)
+    if channels:
+        listing = "\n".join(f"{channel.display}" for channel in channels)
+        text = (
+            "📡 کانال‌های من\n\n"
+            f"{listing}\n\n"
+            "پست‌های جدید این کانال‌ها خودکار به لیست اطلاعیه‌هایت اضافه "
+            "می‌شود و بهت اطلاع داده می‌شود."
+        )
+    else:
+        text = f"📡 کانال‌های من\n\n{NO_CHANNELS}"
+    await answer(update, context, text, reply_markup=_channels_keyboard(channels))
+    return AnnouncementState.CHANNELS
+
+
+async def on_channels_clicked(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query is not None:
+        await query.answer()
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    return await _show_channels(update, context, user_id)
+
+
+async def on_add_channel_clicked(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query is not None:
+        await query.answer()
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    await answer(update, context, PROMPT_ADD_CHANNEL, reply_markup=_add_channel_prompt_keyboard())
+    return AnnouncementState.CHANNEL_ADD
+
+
+async def on_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """A message arrived while the bot is waiting for the channel link."""
+    message = update.effective_message
+    user_id = await current_user_id(update, context)
+    if user_id is None or message is None:
+        return ConversationHandler.END
+
+    raw = (message.text or "").strip()
+    if raw in MENU_LABELS:  # navigation always wins over content
+        return await announcements_menu(update, context)
+    if raw in (CANCEL, BACK, "/cancel"):
+        return await _show_channels(update, context, user_id)
+
+    normalized = normalize_channel_url(raw)
+    if normalized is None:
+        await answer(update, context, CHANNEL_INVALID, reply_markup=_add_channel_prompt_keyboard())
+        return AnnouncementState.CHANNEL_ADD
+
+    platform, url, handle = normalized
+    async with get_session() as session:
+        channel, created = await UserChannelRepository(session).add(
+            user_id=user_id, platform=platform, url=url, handle=handle
+        )
+    await answer(
+        update,
+        context,
+        (CHANNEL_SAVED if created else CHANNEL_EXISTS).format(handle=channel.handle),
+    )
+    return await _show_channels(update, context, user_id)
+
+
+async def on_channel_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query is not None:
+        await query.answer()
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    channel_id = int((query.data or "").split(":")[-1])
+    async with get_session() as session:
+        repository = UserChannelRepository(session)
+        channel = await repository.get(channel_id, user_id)
+        if channel is not None:
+            await repository.delete(channel)
+    return await _show_channels(update, context, user_id)
+
+
+async def on_channel_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return ConversationHandler.END
+    return await _show_channels(update, context, user_id)
 
 
 # --- saving a post ------------------------------------------------------
@@ -535,6 +669,7 @@ def build_conversation() -> ConversationHandler:
         states={
             AnnouncementState.MENU: [
                 CallbackQueryHandler(on_add_clicked, pattern=r"^ann:add$"),
+                CallbackQueryHandler(on_channels_clicked, pattern=r"^ann:ch$"),
                 CallbackQueryHandler(on_open, pattern=r"^ann:open:\d+$"),
                 CallbackQueryHandler(exit_conversation, pattern=r"^ann:exit$"),
                 MessageHandler(filters.Text([ANNOUNCEMENTS]), announcements_menu),
@@ -548,6 +683,21 @@ def build_conversation() -> ConversationHandler:
                 MessageHandler(filters.Text([ANNOUNCEMENTS]), announcements_menu),
                 MessageHandler(file_filter & ~filters.COMMAND, on_post_file),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_post_text),
+            ],
+            AnnouncementState.CHANNELS: [
+                CallbackQueryHandler(on_channels_clicked, pattern=r"^ann:ch$"),
+                CallbackQueryHandler(on_add_channel_clicked, pattern=r"^ann:chadd$"),
+                CallbackQueryHandler(on_channel_delete, pattern=r"^ann:chdel:\d+$"),
+                CallbackQueryHandler(announcements_menu, pattern=r"^ann:list$"),
+                CallbackQueryHandler(exit_conversation, pattern=r"^ann:exit$"),
+                MessageHandler(filters.Text([ANNOUNCEMENTS]), announcements_menu),
+            ],
+            AnnouncementState.CHANNEL_ADD: [
+                CallbackQueryHandler(on_channel_cancel, pattern=r"^ann:chcancel$"),
+                CallbackQueryHandler(announcements_menu, pattern=r"^ann:list$"),
+                CallbackQueryHandler(exit_conversation, pattern=r"^ann:exit$"),
+                MessageHandler(filters.Text([ANNOUNCEMENTS]), announcements_menu),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~menu_buttons_filter(), on_channel_text),
             ],
             AnnouncementState.DETAIL: [
                 CallbackQueryHandler(on_delete_confirmed, pattern=r"^ann:delete:\d+:yes$"),

@@ -136,3 +136,49 @@ async def test_delete_removes_only_your_announcement(announcements_client):
 
     remaining = await announcements_client.get("/api/announcements", headers=stranger)
     assert [a["id"] for a in remaining.json()] == [others]
+
+
+# --- channel subscriptions ------------------------------------------------
+async def test_channels_crud_and_scope(announcements_client):
+    client = announcements_client
+    mine = _headers(user_id=111)
+    stranger = _headers(user_id=222)
+
+    assert (await client.get("/api/announcements/channels")).status_code == 401
+
+    added = await client.post(
+        "/api/announcements/channels", json={"url": "https://t.me/my_chan"}, headers=mine
+    )
+    assert added.status_code == 200
+    channel = added.json()
+    assert channel["platform"] == "telegram"
+    assert channel["handle"] == "my_chan"
+    assert channel["url"] == "https://t.me/my_chan"
+
+    listed = await client.get("/api/announcements/channels", headers=mine)
+    assert [c["id"] for c in listed.json()] == [channel["id"]]
+    # another student sees nothing of mine
+    assert (
+        await client.get("/api/announcements/channels", headers=stranger)
+    ).json() == []
+
+    # the same channel in a short form is idempotent
+    again = await client.post(
+        "/api/announcements/channels", json={"url": "t.me/my_chan"}, headers=mine
+    )
+    assert again.status_code == 200
+    assert len((await client.get("/api/announcements/channels", headers=mine)).json()) == 1
+
+    bad = await client.post(
+        "/api/announcements/channels", json={"url": "https://example.com/x"}, headers=mine
+    )
+    assert bad.status_code == 400
+
+    deleted = await client.delete(
+        f"/api/announcements/channels/{channel['id']}", headers=mine
+    )
+    assert deleted.json() == {"deleted": True}
+    assert (await client.get("/api/announcements/channels", headers=mine)).json() == []
+    assert (
+        await client.delete(f"/api/announcements/channels/{channel['id']}", headers=mine)
+    ).status_code == 404

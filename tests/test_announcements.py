@@ -325,10 +325,12 @@ async def test_deleting_a_user_removes_his_announcements(session):
     assert await AnnouncementRepository(session).count(user.id) == 0
 
 
-def test_conversation_covers_the_three_states():
+def test_conversation_covers_all_states():
     handler = build_conversation()
     assert set(handler.states) == {
         AnnouncementState.MENU,
         AnnouncementState.DETAIL,
         AnnouncementState.WAITING,
+        AnnouncementState.CHANNELS,
+        AnnouncementState.CHANNEL_ADD,
     }
