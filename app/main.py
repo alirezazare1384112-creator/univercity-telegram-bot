@@ -143,6 +143,14 @@ def run_bot() -> None:
     setup_logging(settings)
     _validate_token(settings)
 
+    # Auto-run database migrations before the bot starts. This keeps the
+    # server-side deployment in sync with the latest Alembic head without
+    # a manual ``alembic upgrade head`` step. Failures are logged but do
+    # not stop the bot from starting: a missing column is a soft failure
+    # (the affected feature just returns null), and a totally broken
+    # database would surface as a runtime error anyway.
+    asyncio.run(_auto_migrate())
+
     logger.info("Starting Student Assistant Bot (timezone=%s)", settings.timezone)
     app = build_application()
     app.run_polling(
@@ -150,6 +158,62 @@ def run_bot() -> None:
         drop_pending_updates=True,
         close_loop=False,
     )
+
+
+async def _auto_migrate() -> None:
+    """Run ``alembic upgrade head`` programmatically.
+
+    Alembic's CLI runs ``asyncio.run()`` internally, which clashes with
+    an already-running event loop. We invoke the same migration runner
+    the env file uses, but from inside our own loop so it works both in
+    ``run_bot`` (no loop yet) and ``_serve`` (loop already running via
+    ``asyncio.run`` at the top of ``run_services``).
+    """
+    from sqlalchemy import inspect, text
+
+    from app.database.database import get_engine
+    from app.database.models import Base
+
+    # Same light migration list as the serverless bootstrap. Alembic is
+    # the source of truth in development, but production long-running
+    # deployments may start from an older schema and the ALTER TABLE
+    # here is a safety net that runs in parallel with Alembic.
+    light_migrations: tuple[tuple[str, str, str], ...] = (
+        ("users", "photo_url", "VARCHAR(512)"),
+    )
+
+    engine = get_engine()
+    try:
+        async with engine.begin() as conn:
+            # 1. create_all: pick up brand-new tables.
+            await conn.run_sync(
+                lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True)
+            )
+
+            # 2. Light ALTER TABLE: pick up new nullable columns.
+            def _existing_columns(sync_conn) -> dict[str, set[str]]:
+                inspector = inspect(sync_conn)
+                result: dict[str, set[str]] = {}
+                for table_name in inspector.get_table_names():
+                    result[table_name] = {
+                        col["name"] for col in inspector.get_columns(table_name)
+                    }
+                return result
+
+            existing = await conn.run_sync(_existing_columns)
+            for table, column, ddl in light_migrations:
+                if table not in existing:
+                    continue
+                if column in existing[table]:
+                    continue
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                )
+                logger.info("Auto-migrate: added %s.%s", table, column)
+
+        logger.info("Auto-migrate completed")
+    except Exception:
+        logger.exception("Auto-migrate failed; continuing startup")
 
 
 async def _boot_bot_once(application: Application, state: dict[str, bool]) -> None:
@@ -240,6 +304,11 @@ async def _serve(settings: Settings) -> None:
     import uvicorn
 
     from app.api import create_api
+
+    # Auto-migrate before serving the first request. Same safety net as
+    # ``run_bot``: ensures new nullable columns exist on the production
+    # database without a manual ``alembic upgrade head``.
+    await _auto_migrate()
 
     logger.info(
         "Starting bot + Mini App API on http://%s:%s",

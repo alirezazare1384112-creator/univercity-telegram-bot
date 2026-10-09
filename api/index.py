@@ -59,14 +59,33 @@ CREATE TABLE IF NOT EXISTS persistence_store (
 )
 """
 
+# Lightweight in-process migration steps. Each entry is applied once per
+# cold instance when the column it adds is missing. This bridges the gap
+# between Alembic (which cannot run inside the serverless event loop) and
+# the ``Base.metadata.create_all`` bootstrap, which only creates *tables*
+# and never alters an existing one.
+#
+# Each step is idempotent: ``checkfirst`` via ``inspect`` makes sure the
+# column is added exactly once. The list grows as the project adds new
+# nullable columns to existing tables; drop-column migrations are not
+# supported here (rarely needed and unsafe on SQLite).
+_LIGHT_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    # (table, column, DDL fragment)
+    ("users", "photo_url", "VARCHAR(512)"),
+)
+
 
 async def _ensure_schema() -> None:
-    """Create missing tables on a fresh Neon database, once per instance.
+    """Create missing tables and add missing columns, once per instance.
 
     Alembic cannot be used here: its async env calls ``asyncio.run()`` from
-    inside the already-running serverless event loop. This bootstrap only
-    creates tables that do not exist yet, so an existing database is left
-    untouched.
+    inside the already-running serverless event loop. This bootstrap:
+
+    1. Creates every table that does not exist yet (``create_all``).
+    2. Runs the small ``_LIGHT_MIGRATIONS`` ALTER TABLE list so existing
+       databases pick up new nullable columns without a manual
+       ``alembic upgrade head``.
+    3. Creates the ``persistence_store`` table used by serverless runs.
     """
     global _migrated
     if _migrated:
@@ -86,6 +105,32 @@ async def _ensure_schema() -> None:
                     sync_conn.execute(text(statement))
 
         await conn.run_sync(_create)
+
+        # Light ALTER TABLE migrations for existing tables.
+        def _existing_columns(sync_conn) -> dict[str, set[str]]:
+            inspector = inspect(sync_conn)
+            result: dict[str, set[str]] = {}
+            for table_name in inspector.get_table_names():
+                result[table_name] = {
+                    col["name"] for col in inspector.get_columns(table_name)
+                }
+            return result
+
+        existing = await conn.run_sync(_existing_columns)
+
+        for table, column, ddl in _LIGHT_MIGRATIONS:
+            if table not in existing:
+                continue  # table created by create_all; column already there
+            if column in existing[table]:
+                continue  # already migrated
+            # SQLite needs batch mode for ALTER; PostgreSQL accepts plain ALTER.
+            # ``render_as_batch`` is set in alembic env; here we just use a
+            # raw ALTER which both dialects accept for ADD COLUMN.
+            await conn.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+            )
+            logger.info("Light migration: added %s.%s", table, column)
+
         table_names = await conn.run_sync(
             lambda sync_conn: set(inspect(sync_conn).get_table_names())
         )
