@@ -104,3 +104,19 @@ async def test_without_a_marker_file_the_database_remembers_the_url(
     # a second, fresh instance (no marker file at all) must not re-send
     assert await run_webapp_url_notice(_application()) is False
     assert application.bot.send_message.await_count == 1
+
+
+async def test_force_resends_even_when_the_marker_matches(
+    db, monkeypatch, tmp_path, restore_webapp_url
+):
+    """``force=True`` heals a stale keyboard left over from an older deploy."""
+    monkeypatch.setenv("WEBAPP_URL", "https://new-url.trycloudflare.com")
+    reset_settings_cache()
+    marker = tmp_path / "webapp_url"
+    await _user(8806)
+    application = _application()
+
+    assert await run_webapp_url_notice(application, marker=marker) is True
+    assert await run_webapp_url_notice(application, marker=marker) is False
+    assert await run_webapp_url_notice(application, marker=marker, force=True) is True
+    assert application.bot.send_message.await_count == 2

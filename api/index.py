@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from fastapi import FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi import FastAPI, Header, HTTPException, Query, Request  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from telegram import Update  # noqa: E402
 
@@ -211,7 +211,9 @@ async def telegram_webhook(
     return {"ok": True}
 
 
-async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
+async def _run_sweeps(
+    application, *, with_sync: bool, force_notice: bool = False
+) -> dict[str, object]:
     """Reminder sweep (+ optional channel syncs). Never raises."""
     from app.scheduler import run_eitaa_sync, run_one_cycle, run_user_channel_sync
 
@@ -226,10 +228,13 @@ async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
         try:
             # push the current Mini App keyboard when WEBAPP_URL rotates
             # (local marker is per-instance; on Vercel the stable domain
-            # is already in DB so this is a no-op after the first send)
+            # is already in DB so this is a no-op after the first send,
+            # unless the caller asks for a forced re-send)
             from app.scheduler import run_webapp_url_notice
 
-            results["webapp_notice"] = bool(await run_webapp_url_notice(application))
+            results["webapp_notice"] = bool(
+                await run_webapp_url_notice(application, force=force_notice)
+            )
         except Exception as exc:
             logger.exception("sweep: webapp url notice failed")
             results["webapp_notice"] = f"failed: {type(exc).__name__}: {exc}"[:200]
@@ -281,7 +286,10 @@ async def _maybe_background_sweeps(application) -> None:
 
 @api.post("/api/cron/tick")
 @api.post("/api/index/cron/tick")
-async def cron_tick(authorization: str | None = Header(default=None)) -> dict:
+async def cron_tick(
+    authorization: str | None = Header(default=None),
+    force: bool = Query(default=False),
+) -> dict:
     _require_bearer(authorization)
     application = _get_ptb()
     results: dict[str, object] = {}
@@ -298,7 +306,7 @@ async def cron_tick(authorization: str | None = Header(default=None)) -> dict:
     except Exception:
         logger.exception("set_webhook from cron failed")
 
-    results.update(await _run_sweeps(application, with_sync=True))
+    results.update(await _run_sweeps(application, with_sync=True, force_notice=force))
     await application.update_persistence()
     return results
 

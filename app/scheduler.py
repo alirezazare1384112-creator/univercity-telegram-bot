@@ -58,7 +58,7 @@ async def run_one_cycle(application: Application) -> dict[str, int]:
 
 
 async def run_webapp_url_notice(
-    application: Application, marker: Path | None = None
+    application: Application, marker: Path | None = None, *, force: bool = False
 ) -> bool:
     """Push a fresh main menu when the Mini App address changed.
 
@@ -68,6 +68,10 @@ async def run_webapp_url_notice(
     last address we delivered and, when it differs, sends every user the
     menu again - one message per rotation.
 
+    ``force=True`` re-sends even when the address did not change: clients
+    keep the last reply keyboard until a new one arrives, so this heals a
+    stale keyboard left over from an older deploy.
+
     Sends run concurrently (cap 10) so a 500-user rotation finishes in
     ~50 seconds instead of ~500 seconds.
     """
@@ -75,13 +79,17 @@ async def run_webapp_url_notice(
     if not url.startswith("https://"):
         return False
     last = await _read_marker(marker)
-    if last == url:
+    if last == url and not force:
         return False
     async with get_session() as session:
         telegram_ids = [
             row[0] for row in (await session.execute(select(User.telegram_id))).all()
         ]
-    text_msg = "📱 لینک مینی‌اپ به‌روزرسانی شد.\nاز دکمهٔ زیر استفاده کن:"
+    text_msg = (
+        "📱 منوی جدید ربات 👇\n"
+        "برای باز کردن مینی‌اپ روی دکمهٔ «📱 باز کردن مینی‌اپ» بزن تا ربات "
+        "دکمهٔ باز کردن را بفرستد."
+    )
     markup = main_menu_keyboard()
     sent = 0
     sent_lock = asyncio.Lock()
