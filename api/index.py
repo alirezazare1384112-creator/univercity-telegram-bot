@@ -276,16 +276,26 @@ async def setup(key: str = "") -> dict[str, str]:
 # hand the function the *destination* path (/api/index/<rest>), so wrap the
 # app and normalize it back to /api/<rest> for every FastAPI route.
 class _VercelPathNormalize:
+    """Map Vercel's rewritten destination back to the app's real paths.
+
+    ``api/index.py`` is one Python function: the platform always hands it
+    ``/api/index/<rest>``. Real FastAPI routes live under ``/api/<rest>``
+    (Mini App API + webhook/cron/setup), so strip that prefix. The SPA
+    rewrite destination ``/index.html`` (and any other non-API path) is
+    normalized to ``/`` so the in-function SPA catch-all can serve
+    ``public/index.html`` when the CDN static path is not used.
+    """
+
     def __init__(self, asgi_app):
         self._app = asgi_app
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http":
             path = scope.get("path", "")
-            if path == "/api/index":
-                scope["path"] = "/api/health"
-            elif path.startswith("/api/index/"):
+            if path.startswith("/api/index/"):
                 scope["path"] = "/api/" + path[len("/api/index/") :]
+            elif path in ("/index.html", "/api/index"):
+                scope["path"] = "/"
         await self._app(scope, receive, send)
 
 

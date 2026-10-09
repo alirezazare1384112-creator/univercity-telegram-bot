@@ -220,10 +220,12 @@ def create_api(
     api.include_router(admin.router)
 
     @api.get("/api/health")
+    @api.get("/api/index/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     @api.post("/api/boot-report")
+    @api.post("/api/index/boot-report")
     async def boot_report(request: Request) -> dict[str, str]:
         """Public diagnostics beacon: what the Mini App client sees.
 
