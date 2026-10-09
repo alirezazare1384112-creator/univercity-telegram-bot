@@ -1,7 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd frontend && npm ci && npm run build && mkdir -p ../public && cp -r dist/. ../public/",
-  "outputDirectory": "public",
   "framework": null,
   "functions": {
     "api/index.py": {
@@ -10,6 +9,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/((?!ping).*)", "destination": "/api/index/$1" }
+    { "source": "/api/((?!ping).*)", "destination": "/api/index/$1" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
