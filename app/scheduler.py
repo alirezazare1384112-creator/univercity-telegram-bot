@@ -17,7 +17,7 @@ import contextlib
 import logging
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from telegram.ext import Application
 
 from app.bot.keyboards.main_menu import main_menu_keyboard
@@ -32,10 +32,6 @@ logger = logging.getLogger(__name__)
 
 POLL_SECONDS = 30
 _TASK_KEY = "reminder_poller_task"
-# last WEBAPP_URL delivered to users (quick tunnels rotate the address)
-_WEBAPP_URL_MARKER = Path("data/webapp_url")
-
-
 async def run_one_cycle(application: Application) -> dict[str, int]:
     """Send every due reminder once."""
     settings = get_settings()
@@ -52,17 +48,14 @@ async def run_webapp_url_notice(
     ``web_app`` buttons embed their URL at send time and never ping the
     bot, so after a tunnel rotation users keep tapping a dead link until
     something re-renders their keyboard. Compares ``WEBAPP_URL`` with the
-    last address we delivered (``data/webapp_url``) and, when it differs,
-    sends every user the menu again - one message per rotation.
+    last address we delivered (DB row; optional local file fallback) and,
+    when it differs, sends every user the menu again - one message per
+    rotation.
     """
     url = get_settings().webapp_url
     if not url.startswith("https://"):
         return False
-    marker = marker or _WEBAPP_URL_MARKER
-    try:
-        last = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
-    except OSError:
-        last = ""
+    last = await _read_marker(marker)
     if last == url:
         return False
 
@@ -70,24 +63,68 @@ async def run_webapp_url_notice(
         telegram_ids = [
             row[0] for row in (await session.execute(select(User.telegram_id))).all()
         ]
-    text = "📱 لینک مینی‌اپ به‌روزرسانی شد.\nاز دکمهٔ زیر استفاده کن:"
+    text_msg = "📱 لینک مینی‌اپ به‌روزرسانی شد.\nاز دکمهٔ زیر استفاده کن:"
     markup = main_menu_keyboard()
     sent = 0
     for telegram_id in telegram_ids:
         try:
             await application.bot.send_message(
-                chat_id=telegram_id, text=text, reply_markup=markup
+                chat_id=telegram_id, text=text_msg, reply_markup=markup
             )
             sent += 1
         except Exception:
             logger.exception("Could not send the webapp link update to %s", telegram_id)
+    await _write_marker(marker, url)
+    logger.info("Webapp url notice sent to %s user(s)", sent)
+    return True
+
+
+async def _read_marker(marker: Path | None) -> str:
+    """Read the last delivered URL; prefer a shared DB row (serverless)."""
+    try:
+        async with get_session() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT value FROM persistence_store "
+                        "WHERE kind = 'webapp_url' AND entry_key = 'notice'"
+                    )
+                )
+            ).first()
+            if row is not None and row[0]:
+                return str(row[0])
+    except Exception:
+        logger.exception("Could not read webapp_url marker from DB")
+    if marker is None:
+        return ""
+    try:
+        return marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
+    except OSError:
+        return ""
+
+
+async def _write_marker(marker: Path | None, url: str) -> None:
+    """Persist the delivered URL to the DB (serverless-safe) and best-effort local file."""
+    try:
+        async with get_session() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO persistence_store (kind, entry_key, value) "
+                    "VALUES ('webapp_url', 'notice', :value) "
+                    "ON CONFLICT (kind, entry_key) DO UPDATE SET value = :value"
+                ),
+                {"value": url},
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("Could not persist webapp_url marker to DB")
+    if marker is None:
+        return
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(url, encoding="utf-8")
     except OSError:
-        logger.exception("Could not remember the webapp url")
-    logger.info("Webapp url notice sent to %s user(s)", sent)
-    return True
+        logger.exception("Could not remember the webapp url locally")
 
 
 async def run_eitaa_sync() -> int:
