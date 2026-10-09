@@ -90,3 +90,20 @@ async def test_no_notice_without_a_webapp_url(db, tmp_path, restore_webapp_url):
     assert await run_webapp_url_notice(application, marker=tmp_path / "u") is False
     application.bot.send_message.assert_not_awaited()
     assert not (tmp_path / "u").exists()
+
+
+async def test_without_a_marker_file_the_database_remembers_the_url(
+    db, monkeypatch, restore_webapp_url
+):
+    """On Vercel there is no writable filesystem, so the marker lives in Neon."""
+    monkeypatch.setenv("WEBAPP_URL", "https://univercity-telegram-bot.vercel.app")
+    reset_settings_cache()
+    await _user(8805)
+    application = _application()
+
+    assert await run_webapp_url_notice(application) is True
+    assert application.bot.send_message.await_count == 1
+
+    # a second, fresh instance (no marker file at all) must not re-send
+    assert await run_webapp_url_notice(_application()) is False
+    assert application.bot.send_message.await_count == 1

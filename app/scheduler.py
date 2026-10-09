@@ -15,10 +15,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from telegram.ext import Application
 
 from app.bot.keyboards.main_menu import main_menu_keyboard
@@ -35,6 +34,15 @@ POLL_SECONDS = 30
 _TASK_KEY = "reminder_poller_task"
 # last WEBAPP_URL delivered to users (quick tunnels rotate the address)
 _WEBAPP_URL_MARKER = Path("data/webapp_url")
+# serverless shares nothing but Neon, so the marker row lives there
+_MARKER_DDL = """
+CREATE TABLE IF NOT EXISTS persistence_store (
+    kind TEXT NOT NULL,
+    entry_key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (kind, entry_key)
+)
+"""
 
 
 async def run_one_cycle(application: Application) -> dict[str, int]:
@@ -59,8 +67,7 @@ async def run_webapp_url_notice(
     url = get_settings().webapp_url
     if not url.startswith("https://"):
         return False
-    marker = marker or _webapp_url_marker_path()
-    last = _read_marker(marker)
+    last = await _read_marker(marker)
     if last == url:
         return False
     async with get_session() as session:
@@ -78,23 +85,40 @@ async def run_webapp_url_notice(
             sent += 1
         except Exception:
             logger.exception("Could not send the webapp link update to %s", telegram_id)
-    _write_marker(marker, url)
+    await _write_marker(marker, url)
     logger.info("Webapp url notice sent to %s user(s)", sent)
     return True
 
 
 def _webapp_url_marker_path() -> Path:
-    """Marker path: /tmp on Vercel (the rest of the filesystem is read-only),
-    the repo's ``data/`` folder when running locally."""
-    if os.getenv("VERCEL"):
-        return Path("/tmp") / "bot_webapp_url"
+    """Marker path: the repo's ``data/`` folder when running locally."""
     return _WEBAPP_URL_MARKER
 
 
-def _read_marker(marker: Path | None) -> str:
-    """Last Mini App URL we delivered; empty when we have not sent one yet."""
+async def _read_marker(marker: Path | None) -> str:
+    """Last Mini App URL we delivered; empty when we have not sent one yet.
+
+    Serverless keeps this in Neon: each instance gets a fresh filesystem, so
+    a local file would look "unread" again on every cold start and re-send the
+    menu to every user. Passing ``marker`` still forces the local file path,
+    which is what tests and a local run use.
+    """
     if marker is None:
-        return ""
+        try:
+            async with get_session() as session:
+                await session.execute(text(_MARKER_DDL))
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT value FROM persistence_store "
+                            "WHERE kind = 'webapp_url' AND entry_key = 'notice'"
+                        )
+                    )
+                ).first()
+                return str(row[0]) if row and row[0] else ""
+        except Exception:
+            logger.exception("Could not read the webapp url marker from the database")
+            return ""
     try:
         return marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
     except OSError:
@@ -102,10 +126,25 @@ def _read_marker(marker: Path | None) -> str:
         return ""
 
 
-def _write_marker(marker: Path | None, url: str) -> None:
+async def _write_marker(marker: Path | None, url: str) -> None:
     """Remember the URL we just delivered so the next run does not repeat it."""
     if marker is None:
-        return
+        try:
+            async with get_session() as session:
+                await session.execute(text(_MARKER_DDL))
+                await session.execute(
+                    text(
+                        "INSERT INTO persistence_store (kind, entry_key, value) "
+                        "VALUES ('webapp_url', 'notice', :value) "
+                        "ON CONFLICT (kind, entry_key) DO UPDATE SET value = :value"
+                    ),
+                    {"value": url},
+                )
+                await session.commit()
+            return
+        except Exception:
+            logger.exception("Could not persist the webapp url marker")
+            return
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(url, encoding="utf-8")
