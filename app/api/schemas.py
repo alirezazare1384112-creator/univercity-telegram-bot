@@ -29,6 +29,10 @@ class MeOut(BaseModel):
     semester: str | None
     bio: str | None
     is_admin: bool = False
+    # True when the server has a CREDENTIALS_MASTER_KEY configured and can
+    # therefore store/retrieve link credentials. The Mini App uses this
+    # to show or hide the "save login" toggle on the links page.
+    credentials_enabled: bool = False
 
 
 class AdminStatsOut(BaseModel):
@@ -419,6 +423,11 @@ class LinkIn(BaseModel):
     title: str
     url: str
     description: str | None = None
+    # Optional credentials for auto-login. The Mini App sends these only
+    # when the user toggles "save login" and fills both fields. Sending
+    # null clears any previously stored credential on update.
+    username: str | None = None
+    password: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -448,6 +457,25 @@ class LinkIn(BaseModel):
         value = value.strip()
         return value or None
 
+    @field_validator("username", "password")
+    @classmethod
+    def _strip_credentials(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> LinkIn:
+        # Either both username and password are set, or neither.
+        if (self.username is None) != (self.password is None):
+            raise ValueError("username and password must be set together")
+        if self.username is not None and len(self.username) > 256:
+            raise ValueError("username is too long")
+        if self.password is not None and len(self.password) > 256:
+            raise ValueError("password is too long")
+        return self
+
 
 class LinkOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -456,6 +484,7 @@ class LinkOut(BaseModel):
     title: str
     url: str
     description: str | None
+    has_credentials: bool = False
 
 
 class ProfileIn(BaseModel):

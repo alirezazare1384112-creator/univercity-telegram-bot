@@ -180,6 +180,8 @@ async def _auto_migrate() -> None:
     # here is a safety net that runs in parallel with Alembic.
     light_migrations: tuple[tuple[str, str, str], ...] = (
         ("users", "photo_url", "VARCHAR(512)"),
+        ("university_links", "ciphertext_b64", "TEXT"),
+        ("university_links", "wrapped_key_b64", "TEXT"),
     )
 
     engine = get_engine()

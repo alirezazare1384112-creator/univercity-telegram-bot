@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.auth import current_user
 from app.api.schemas import MeOut, ProfileIn
+from app.config import get_settings
 from app.database.database import get_session
 from app.database.models import User
 from app.database.repositories.admin_repository import AdminRepository
@@ -20,6 +21,7 @@ async def _me_out(user: User) -> MeOut:
     out = MeOut.model_validate(user)
     async with get_session() as session:
         out.is_admin = await AdminRepository(session).is_admin(user.telegram_id)
+    out.credentials_enabled = get_settings().credentials_enabled
     return out
 
 
