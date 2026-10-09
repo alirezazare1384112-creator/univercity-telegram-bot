@@ -29,10 +29,22 @@ class LinkRepository:
         return result.scalar_one_or_none()
 
     async def create(
-        self, *, user_id: int, title: str, url: str, description: str | None = None
+        self,
+        *,
+        user_id: int,
+        title: str,
+        url: str,
+        description: str | None = None,
+        ciphertext_b64: str | None = None,
+        wrapped_key_b64: str | None = None,
     ) -> UniversityLink:
         link = UniversityLink(
-            user_id=user_id, title=title, url=url, description=description or None
+            user_id=user_id,
+            title=title,
+            url=url,
+            description=description or None,
+            ciphertext_b64=ciphertext_b64,
+            wrapped_key_b64=wrapped_key_b64,
         )
         self._session.add(link)
         await self._session.flush()
