@@ -117,11 +117,8 @@ def _read_settings() -> Settings:
     import os
     import tempfile
 
-    if os.getenv("VERCEL"):
-        # the deployment filesystem is read-only outside /tmp
-        raw_log_dir = "/tmp/bot_logs"
-    else:
-        raw_log_dir = os.getenv("LOG_DIR", "").strip()
+    # the deployment filesystem is read-only outside /tmp
+    raw_log_dir = "/tmp/bot_logs" if os.getenv("VERCEL") else os.getenv("LOG_DIR", "").strip()
     log_dir = Path(raw_log_dir or "./logs")
     if not log_dir.is_absolute():
         log_dir = (BASE_DIR / log_dir).resolve()
