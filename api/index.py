@@ -184,7 +184,7 @@ async def _run_sweeps(application, *, with_sync: bool) -> dict[str, object]:
             # is already in DB so this is a no-op after the first send)
             from app.scheduler import run_webapp_url_notice
 
-            await run_webapp_url_notice(application)
+            results["webapp_notice"] = bool(await run_webapp_url_notice(application))
         except Exception as exc:
             logger.exception("sweep: webapp url notice failed")
             results["webapp_notice"] = f"failed: {type(exc).__name__}: {exc}"[:200]
