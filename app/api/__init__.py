@@ -147,11 +147,16 @@ class _ImmutableStaticFiles(StaticFiles):
         return response
 
 
-def create_api(application: Application | None = None) -> FastAPI:
+def create_api(
+    application: Application | None = None, *, mount_spa: bool = True
+) -> FastAPI:
     """Build the FastAPI app.
 
     ``application`` is the running PTB bot (used later for file uploads and
     notifications); ``None`` is fine for tests and ``--check`` style usage.
+    ``mount_spa=False`` skips the static/SPA catch-all (serverless hosts
+    such as Vercel serve the built frontend themselves - and a GET
+    catch-all would shadow later-registered GET routes like /api/setup).
     """
     api = FastAPI(title="Student Assistant API", version="1.0.0")
     api.state.bot_application = application
@@ -230,7 +235,7 @@ def create_api(application: Application | None = None) -> FastAPI:
     # Production: serve the built Mini App from frontend/dist (SPA fallback).
     # In dev the Vite server answers on :5173, so a missing dist/ is fine.
     dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-    if dist.is_dir():
+    if mount_spa and dist.is_dir():
         assets = dist / "assets"
         if assets.is_dir():
             api.mount("/assets", _ImmutableStaticFiles(directory=assets), name="assets")

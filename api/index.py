@@ -98,7 +98,7 @@ def _require_bearer(authorization: str | None) -> None:
         raise HTTPException(status_code=403, detail="forbidden")
 
 
-api: FastAPI = create_api(None)
+api: FastAPI = create_api(None, mount_spa=False)
 
 
 @api.middleware("http")
