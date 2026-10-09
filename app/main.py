@@ -41,13 +41,21 @@ async def _post_shutdown(application: Application) -> None:
 
 
 def build_application() -> Application:
-    """Create the PTB application and register every handler."""
+    """Create the PTB application and register every handler.
+
+    ``concurrent_updates=True`` lets PTB process multiple updates in
+    parallel. The default (False) serialises every update through one
+    queue, so a single slow handler (e.g. a file upload) blocks every
+    other user. With concurrency enabled the bot keeps responding even
+    while one user is in the middle of a multi-step wizard.
+    """
     settings = get_settings()
     app = (
         Application.builder()
         .token(settings.bot_token)
         .post_init(_post_init)
         .post_shutdown(_post_shutdown)
+        .concurrent_updates(True)
         .build()
     )
     register_handlers(app)
@@ -221,6 +229,13 @@ async def _serve(settings: Settings) -> None:
     The API boots first and stays up even when Telegram is unreachable;
     the bot boots in the background (``_boot_forever``), so a
     network outage can no longer take the Mini App down with it.
+
+    Uvicorn tuning:
+    - ``timeout_keep_alive=5``: close idle keep-alive connections after
+      5 s (default 5 is fine, but explicit so we don't regress). Frees
+      file descriptors faster under load.
+    - ``limit_concurrency`` and ``backlog`` are left at Uvicorn defaults;
+      the FastAPI rate limiter is the real cap.
     """
     import uvicorn
 
@@ -240,6 +255,13 @@ async def _serve(settings: Settings) -> None:
             host=settings.api_host,
             port=settings.api_port,
             log_level=settings.log_level.lower(),
+            timeout_keep_alive=5,
+            # Cap the in-flight request count so a flood of Mini App
+            # polls cannot exhaust memory. Default is None (unlimited).
+            limit_concurrency=200,
+            # OS-level listen backlog; raised from the default 101 so
+            # connection spikes during a broadcast don't drop clients.
+            backlog=2048,
         )
     )
     bot_task = asyncio.create_task(_boot_forever(application, state))

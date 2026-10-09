@@ -25,12 +25,16 @@ from app.config import get_settings
 from app.database.database import get_session
 from app.database.models.user import User
 from app.services.channel_sync import new_posts_notice, sync_user_channels
-from app.services.eitaa_sync import sync_channels
+from app.services.eitaa_sync import close_shared_client, sync_channels
 from app.services.reminder_service import process_due_notifications
 
 logger = logging.getLogger(__name__)
 
 POLL_SECONDS = 30
+# Cap broadcast concurrency so a 500-user menu refresh does not trip
+# Telegram's ~30 msg/s rate limit. 10 simultaneous sends + the natural
+# per-request latency keeps us well under the limit.
+_BROADCAST_CONCURRENCY = 10
 _TASK_KEY = "reminder_poller_task"
 # last WEBAPP_URL delivered to users (quick tunnels rotate the address)
 _WEBAPP_URL_MARKER = Path("data/webapp_url")
@@ -63,6 +67,9 @@ async def run_webapp_url_notice(
     something re-renders their keyboard. Compares ``WEBAPP_URL`` with the
     last address we delivered and, when it differs, sends every user the
     menu again - one message per rotation.
+
+    Sends run concurrently (cap 10) so a 500-user rotation finishes in
+    ~50 seconds instead of ~500 seconds.
     """
     url = get_settings().webapp_url
     if not url.startswith("https://"):
@@ -77,14 +84,23 @@ async def run_webapp_url_notice(
     text_msg = "📱 لینک مینی‌اپ به‌روزرسانی شد.\nاز دکمهٔ زیر استفاده کن:"
     markup = main_menu_keyboard()
     sent = 0
-    for telegram_id in telegram_ids:
-        try:
-            await application.bot.send_message(
-                chat_id=telegram_id, text=text_msg, reply_markup=markup
-            )
-            sent += 1
-        except Exception:
-            logger.exception("Could not send the webapp link update to %s", telegram_id)
+    sent_lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(_BROADCAST_CONCURRENCY)
+
+    async def _send_one(telegram_id: int) -> None:
+        nonlocal sent
+        async with semaphore:
+            try:
+                await application.bot.send_message(
+                    chat_id=telegram_id, text=text_msg, reply_markup=markup
+                )
+                async with sent_lock:
+                    sent += 1
+            except Exception:
+                logger.exception("Could not send the webapp link update to %s", telegram_id)
+
+    await asyncio.gather(*(_send_one(tid) for tid in telegram_ids))
+
     await _write_marker(marker, url)
     logger.info("Webapp url notice sent to %s user(s)", sent)
     return True
@@ -247,9 +263,11 @@ async def start_scheduler(application: Application) -> None:
 async def stop_scheduler(application: Application) -> None:
     """Stop polling (called by PTB before shutdown)."""
     task: asyncio.Task | None = application.bot_data.pop(_TASK_KEY, None)
-    if task is None:
-        return
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+    if task is not None:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    # Close the shared HTTP client so the process can exit cleanly.
+    with contextlib.suppress(Exception):
+        await close_shared_client()
     logger.info("Scheduler stopped")

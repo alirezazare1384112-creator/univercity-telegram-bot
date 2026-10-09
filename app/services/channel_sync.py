@@ -12,6 +12,7 @@ Media-only posts are skipped - resending photos needs an official API
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from urllib.parse import urlparse
@@ -30,6 +31,12 @@ from app.services.eitaa_sync import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Cap concurrent channel fetches so a burst of 30 user channels does not
+# spawn 30 simultaneous HTTP requests. 5 is conservative; the shared
+# ``httpx.AsyncClient`` allows up to 20 connections, leaving headroom for
+# the global Eitaa sync running in the same tick.
+_FETCH_CONCURRENCY = 5
 
 _EITAA_HOSTS = {"eitaa.com", "www.eitaa.com", "eitaa.ir", "www.eitaa.ir"}
 _TELEGRAM_HOSTS = {"t.me", "www.t.me", "telegram.me", "telegram.dog"}
@@ -111,6 +118,9 @@ async def sync_user_channels() -> dict[int, int]:
     Each distinct URL is fetched once (several students may subscribe to
     the same channel). Returns ``{telegram_id: number_of_new_posts}`` so
     the scheduler can push one notice per student.
+
+    Channels are fetched concurrently (cap 5) so 20 subscribed channels
+    finish in ~1 RTT instead of ~20.
     """
     async with get_session() as session:
         channels = await UserChannelRepository(session).list_all()
@@ -120,16 +130,27 @@ async def sync_user_channels() -> dict[int, int]:
     if not grouped:
         return {}
 
+    semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
+    fetched: dict[str, list[EitaaPost] | None] = {}
+
+    async def _fetch_one(url: str, platform: str) -> None:
+        async with semaphore:
+            try:
+                fetched[url] = await fetch_posts(platform, url)
+            except Exception:
+                logger.exception("User-channel sync failed for %s", url)
+                fetched[url] = None
+
+    await asyncio.gather(
+        *(_fetch_one(url, subs[0][0]) for url, subs in grouped.items())
+    )
+
     counts: dict[int, int] = {}
     for url, subscribers in grouped.items():
-        platform = subscribers[0][0]
-        try:
-            posts = await fetch_posts(platform, url)
-        except Exception:
-            logger.exception("User-channel sync failed for %s", url)
-            continue
+        posts = fetched.get(url)
         if not posts:
             continue
+        platform = subscribers[0][0]
         async with get_session() as session:
             for _platform, user_id in subscribers:
                 created = await import_for_user(session, user_id, posts, source=platform)

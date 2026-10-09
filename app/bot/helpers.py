@@ -75,7 +75,13 @@ def is_admin(update: Any) -> bool:
 
 
 async def current_user_id(update: Any, context: ContextTypes.DEFAULT_TYPE) -> int | None:
-    """Internal ``users.id`` of the sender (cached in ``user_data``)."""
+    """Internal ``users.id`` of the sender (cached in ``user_data``).
+
+    Falls back to the middleware's in-memory cache (``_USER_CACHE``) when
+    ``user_data`` does not have it - this happens when a handler runs in
+    a different context (e.g. an error callback) but the user was seen
+    recently by ``capture_user``. Only when both miss do we hit the DB.
+    """
     cached = context.user_data.get("user_id")
     if cached:
         return cached
@@ -83,6 +89,14 @@ async def current_user_id(update: Any, context: ContextTypes.DEFAULT_TYPE) -> in
     tg_user = update.effective_user
     if tg_user is None:
         return None
+
+    # Try the middleware cache first (no DB round-trip).
+    from app.bot.middlewares import _cache_get, _cache_put
+
+    middleware_cached = _cache_get(tg_user.id)
+    if middleware_cached is not None:
+        context.user_data["user_id"] = middleware_cached
+        return middleware_cached
 
     from app.database.database import get_session
     from app.database.repositories import UserRepository
@@ -97,4 +111,5 @@ async def current_user_id(update: Any, context: ContextTypes.DEFAULT_TYPE) -> in
     if user is None:
         return None
     context.user_data["user_id"] = user.id
+    _cache_put(tg_user.id, user.id)
     return user.id

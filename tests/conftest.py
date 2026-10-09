@@ -120,6 +120,19 @@ def clear_telegram_file_cache(tmp_path):
     files_module.set_disk_cache_dir(tmp_path / "telegram_files")
 
 
+@pytest.fixture(autouse=True)
+def clear_user_middleware_cache():
+    """The user-middleware cache (``_USER_CACHE``) survives across tests
+    and would make ``capture_user`` skip the DB on the second test that
+    uses the same ``telegram_id``, breaking every test that swaps the
+    in-memory DB. Reset it before each test."""
+    from app.bot.middlewares import invalidate_user_cache
+
+    invalidate_user_cache()
+    yield
+    invalidate_user_cache()
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
