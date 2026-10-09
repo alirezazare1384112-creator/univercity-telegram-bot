@@ -1,15 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "cd frontend && npm ci && npm run build && mkdir -p ../public && cp -r dist/. ../public/",
-  "outputDirectory": "public",
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
-      "includeFiles": "app/**"
+      "includeFiles": "app/**,public/**"
     }
   },
   "rewrites": [
-    { "source": "/api/((?!ping).*)", "destination": "/api/index/$1" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/api/((?!ping).*)", "destination": "/api/index/$1" }
   ]
 }
