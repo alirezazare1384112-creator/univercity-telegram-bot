@@ -50,22 +50,56 @@ def _get_ptb():
     return _ptb_application
 
 
-def _run_migrations() -> None:
-    """Bring the (Neon) database up to the current schema, once per instance."""
+_PERSISTENCE_DDL = """
+CREATE TABLE IF NOT EXISTS persistence_store (
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value JSONB,
+    PRIMARY KEY (kind, key)
+)
+"""
+
+
+async def _ensure_schema() -> None:
+    """Create missing tables on a fresh Neon database, once per instance.
+
+    Alembic cannot be used here: its async env calls ``asyncio.run()`` from
+    inside the already-running serverless event loop. This bootstrap only
+    creates tables that do not exist yet, so an existing database is left
+    untouched.
+    """
     global _migrated
     if _migrated:
         return
-    from alembic import command
-    from alembic.config import Config
 
-    # no alembic.ini on the serverless bundle - configure directly
-    cfg = Config()
-    cfg.set_main_option(
-        "script_location", str(BASE_DIR / "app" / "database" / "migrations")
-    )
-    command.upgrade(cfg, "head")
+    from sqlalchemy import inspect, text
+
+    from app.database.database import get_engine
+    from app.database.models import Base
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        def _create(sync_conn):
+            Base.metadata.create_all(sync_conn, checkfirst=True)
+            for statement in _PERSISTENCE_DDL.split(";"):
+                if statement.strip():
+                    sync_conn.execute(text(statement))
+
+        await conn.run_sync(_create)
+        table_names = await conn.run_sync(
+            lambda sync_conn: set(inspect(sync_conn).get_table_names())
+        )
+        missing = sorted(
+            {
+                table.name
+                for table in Base.metadata.sorted_tables
+                if table.name not in table_names and table.name != "persistence_store"
+            }
+        )
+    if missing:
+        raise RuntimeError(f"schema bootstrap left missing tables: {missing}")
     _migrated = True
-    logger.info("Database migrations applied")
+    logger.info("Database schema is ready")
 
 
 async def _ensure_ready() -> None:
@@ -73,13 +107,8 @@ async def _ensure_ready() -> None:
     global _ready
     if _ready:
         return
-    migration_error = ""
     try:
-        try:
-            _run_migrations()
-        except Exception as exc:
-            migration_error = f"{type(exc).__name__}: {exc}"[:200]
-            logger.exception("Migration attempt failed (will retry on next request)")
+        await _ensure_schema()
         application = _get_ptb()
         await application.initialize()
         _ready = True
@@ -87,8 +116,6 @@ async def _ensure_ready() -> None:
     except Exception as exc:
         logger.exception("Serverless init failed")
         reason = f"init failed: {type(exc).__name__}: {exc}"[:300]
-        if migration_error:
-            reason += f" | migration: {migration_error}"
         raise HTTPException(status_code=503, detail=reason) from exc
 
 
