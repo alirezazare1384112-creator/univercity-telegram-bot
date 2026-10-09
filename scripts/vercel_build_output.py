@@ -27,7 +27,7 @@ def _run(cmd: list[str]) -> None:
 
 def main() -> int:
     # 1. Build the Mini App
-    _run(["npm", "ci"])
+    _run(["npm", "install"])
     _run(["npm", "run", "build"])
 
     # 2. Stage the Python function bundle
