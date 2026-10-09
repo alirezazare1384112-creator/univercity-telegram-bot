@@ -1,19 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm ci && npm run build && mkdir -p ../public && cp -r dist/. ../public/",
+  "buildCommand": "python scripts/vercel_build_output.py",
   "framework": null,
-  "builds": [
-    {
-      "src": "requirements.txt",
-      "use": "@vercel/python",
-      "config": { "includeFiles": ["app/**", "alembic.ini"] }
-    },
-    { "src": "public/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/api/ping", "dest": "/api/ping.py" },
-    { "src": "/api/((?!ping).*)", "dest": "/api/index.py" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ]
+  "outputDirectory": null
 }

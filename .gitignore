@@ -29,3 +29,4 @@ storage/
 # Vercel
 /public/
 .vercel/
+.vercel/output/
