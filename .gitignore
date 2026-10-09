@@ -25,3 +25,7 @@ storage/
 .idea/
 .vscode/
 .DS_Store
+
+# Vercel
+/public/
+.vercel/

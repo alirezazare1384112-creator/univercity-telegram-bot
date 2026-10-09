@@ -139,7 +139,14 @@ def _read_settings() -> Settings:
 
     return Settings(
         bot_token=os.getenv("BOT_TOKEN", "").strip(),
-        database_url=normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./data/bot.db")),
+        database_url=normalize_database_url(
+            # Vercel's Neon integration exports POSTGRES_URL (pooler) and
+            # POSTGRES_URL_NON_POOLING (direct); local .env uses DATABASE_URL.
+            os.getenv("DATABASE_URL", "").strip()
+            or os.getenv("POSTGRES_URL", "").strip()
+            or os.getenv("POSTGRES_URL_NON_POOLING", "").strip()
+            or "sqlite:///./data/bot.db"
+        ),
         gpa_calculator_url=os.getenv("GPA_CALCULATOR_URL", "").strip(),
         admin_ids=_split_admin_ids(os.getenv("ADMIN_IDS", "")),
         timezone=os.getenv("TIMEZONE", "Asia/Tehran").strip() or "Asia/Tehran",

@@ -50,6 +50,19 @@ _RATE_WINDOW_SECONDS = 60.0
 _RATE_LIMIT_MAX_KEYS = 10_000
 
 
+# Paths exempt from the per-IP budget: Telegram webhook bursts come from a
+# handful of Telegram IPs shared by every user, and the cron/setup routes are
+# machine-to-machine. Counting them would lock out real users.
+_RATE_LIMIT_EXEMPT = {
+    "/api/telegram-webhook",
+    "/api/index/telegram-webhook",
+    "/api/cron/tick",
+    "/api/index/cron/tick",
+    "/api/setup",
+    "/api/index/setup",
+}
+
+
 def _install_rate_limit(api: FastAPI) -> None:
     """Return 429 (with Retry-After) when a client exceeds the window.
 
@@ -63,7 +76,11 @@ def _install_rate_limit(api: FastAPI) -> None:
 
     @api.middleware("http")
     async def rate_limit(request: Request, call_next) -> object:
-        if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+        if (
+            request.method != "OPTIONS"
+            and request.url.path.startswith("/api/")
+            and request.url.path not in _RATE_LIMIT_EXEMPT
+        ):
             forwarded = request.headers.get("x-forwarded-for", "")
             if forwarded:
                 key = forwarded.split(",")[0].strip()

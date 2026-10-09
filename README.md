@@ -444,6 +444,49 @@ journalctl -u student-bot -f        # مشاهدهٔ لاگ
 نکته: `frontend/dist` در `.gitignore` است؛ روی سرور مقصد حتماً `npm run build`
 را اجرا کنید تا ربات فایلی برای سرو داشته باشد.
 
+### ۸.۵ استقرار روی Vercel (همیشه آنلاین، بدون PC)
+
+روی Vercel ربات با **webhook** کار می‌کند (long polling ندارد)؛ بنابراین
+نیازی به سرور، تونل یا روشن ماندن PC نیست. معماری:
+
+* `api/index.py` — یک Function واحد: کل Mini App API + سه مسیر ربات:
+  * `POST /api/telegram-webhook` — تلگرام آپدیت‌ها را اینجا می‌فرستد
+    (با `TELEGRAM_WEBHOOK_SECRET` محافظت می‌شود).
+  * `POST /api/cron/tick` — یک زمان‌بند خارجی (مثلاً cron-job.org، هر یک
+    دقیقه) اینجا را صدا می‌زند؛ یادآوری‌ها، ایتاآپلود و سینک کانال‌ها همین‌جا
+    انجام می‌شود (سرورلس حلقهٔ پس‌زمینه ندارد). با `Authorization: Bearer
+    <CRON_SECRET>` محافظت می‌شود.
+  * `GET /api/setup?key=<CRON_SECRET>` — یک‌بار اجرا کنید تا webhook ثبت شود.
+* `app/persistence.py` — state مکالمه‌ها و `user_data` در دیتابیس (Neon) نگهداری
+  می‌شود؛ instance سرورلس بین درخواست‌ها freeze می‌شود و حافظه را از دست می‌دهد.
+* `vercel.json` — فرانت هنگام build ساخته و در `public/` سرو می‌شود؛ همهٔ مسیرهای
+  غیر از `/api` به SPA rewrite می‌شوند.
+* دیتابیس: از Vercel → Storage → **Neon** (یک‌کلیک) وصل کنید؛ integration خودش
+  `POSTGRES_URL` را ست می‌کند (`config.py` آن را به‌عنوان fallback می‌خواند).
+  migration ها در اولین درخواستِ هر instance به‌صورت خودکار اجرا می‌شوند.
+
+متغیرهای محیطی لازم در Vercel → Settings → Environment Variables:
+
+| نام | مقدار |
+|---|---|
+| `BOT_TOKEN` | همان توکن `.env` |
+| `WEBAPP_URL` | `https://<پروژه>.vercel.app` |
+| `TELEGRAM_WEBHOOK_SECRET` | رشتهٔ تصادفی (مشترک با هدر تلگرام) |
+| `CRON_SECRET` | رشتهٔ تصادفی (کلید setup و Bearer کرون) |
+| `ADMIN_IDS` | شناسهٔ تلگرام ادمین‌ها (کاما جدا) |
+
+بعد از اولین deploy:
+
+1. `https://<پروژه>.vercel.app/api/setup?key=<CRON_SECRET>` را یک‌بار باز کنید
+   تا webhook ثبت شود.
+2. در cron-job.org یک job بسازید: `POST https://<پروژه>.vercel.app/api/cron/tick`
+   با هدر `Authorization: Bearer <CRON_SECRET>`، هر ۱ دقیقه.
+3. `WEBAPP_URL` را در `.env` محلی هم به آدرس Vercel تغییر دهید تا دکمهٔ
+   مینی‌اپ برای کاربران لینک ثابت بدهد.
+
+نکته: اجرای هم‌زمان polling محلی (`run.py`) و webhook را نکنید — تلگرام یکی را
+قبول دارد؛ روی Vercel فقط webhook فعال است.
+
 ---
 
 ## ۹. عیب‌یابی
