@@ -19,6 +19,10 @@ class User(TimestampMixin, IdMixin, Base):
     username: Mapped[str | None] = mapped_column(varchar(64))
     first_name: Mapped[str | None] = mapped_column(varchar(128))
     last_name: Mapped[str | None] = mapped_column(varchar(128))
+    # Telegram profile photo URL sent in initData (when the user has one).
+    # Null when the user has no profile photo or the field is not present.
+    # Telegram signs this URL inside initData so it is safe to trust.
+    photo_url: Mapped[str | None] = mapped_column(varchar(512))
 
     # Profile (optional, filled by the user from the profile menu)
     student_number: Mapped[str | None] = mapped_column(varchar(32), index=True)

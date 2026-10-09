@@ -22,6 +22,7 @@ class MeOut(BaseModel):
     username: str | None
     first_name: str | None
     last_name: str | None
+    photo_url: str | None = None
     student_number: str | None
     field_of_study: str | None
     university: str | None
