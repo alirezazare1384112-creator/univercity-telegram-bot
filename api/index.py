@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS persistence_store (
 _LIGHT_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # (table, column, DDL fragment)
     ("users", "photo_url", "VARCHAR(512)"),
+    ("university_links", "ciphertext_b64", "TEXT"),
+    ("university_links", "wrapped_key_b64", "TEXT"),
 )
 
 

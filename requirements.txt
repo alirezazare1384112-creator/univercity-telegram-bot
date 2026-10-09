@@ -16,3 +16,5 @@ uvicorn>=0.30
 python-multipart>=0.0.9
 # IANA time zone database (required by zoneinfo on Windows)
 tzdata>=2024.1 ; sys_platform == "win32"
+# AES-GCM encryption for stored link credentials (user/pass auto-login)
+cryptography>=42.0.0

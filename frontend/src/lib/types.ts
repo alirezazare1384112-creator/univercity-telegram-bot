@@ -11,6 +11,7 @@ export interface Me {
   semester: string | null;
   bio: string | null;
   is_admin: boolean;
+  credentials_enabled: boolean;
 }
 
 export interface ProfileInput {
@@ -256,10 +257,20 @@ export interface UniversityLink {
   title: string;
   url: string;
   description: string | null;
+  has_credentials: boolean;
 }
 
 export interface LinkInput {
   title: string;
   url: string;
   description?: string | null;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface LinkCredentials {
+  has_credentials: boolean;
+  username?: string;
+  password?: string;
+  url?: string;
 }

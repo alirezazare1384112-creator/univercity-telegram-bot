@@ -119,6 +119,10 @@ class Settings:
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     webapp_auth_max_age: int = 86400
+    # Base64-encoded 32-byte key used to wrap per-credential data keys
+    # (envelope encryption). When empty, link credentials are rejected at
+    # write time so the feature fails closed instead of storing plaintext.
+    credentials_master_key: str = ""
 
     def is_admin(self, telegram_id: int) -> bool:
         """Access to the admin panel is granted by Telegram id only."""
@@ -127,6 +131,11 @@ class Settings:
     @property
     def has_admins(self) -> bool:
         return len(self.admin_ids) > 0
+
+    @property
+    def credentials_enabled(self) -> bool:
+        """True when a non-empty master key is configured."""
+        return bool(self.credentials_master_key)
 
 
 def _read_settings() -> Settings:
@@ -181,6 +190,7 @@ def _read_settings() -> Settings:
         api_host=os.getenv("API_HOST", "").strip() or "127.0.0.1",
         api_port=_read_int(os.getenv("API_PORT", ""), 8000, minimum=1),
         webapp_auth_max_age=_read_int(os.getenv("WEBAPP_AUTH_MAX_AGE", ""), 86400, minimum=60),
+        credentials_master_key=os.getenv("CREDENTIALS_MASTER_KEY", "").strip(),
     )
 
 
