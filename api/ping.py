@@ -39,4 +39,7 @@ async def ping() -> dict:
         "vercel_env": os.getenv("VERCEL", ""),
         "bot_token_set": bool(os.getenv("BOT_TOKEN")),
         "postgres_set": bool(os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")),
+        # True when link-credential encryption is enabled (master key present).
+        # The Mini App hides the "save login" toggle when this is false.
+        "credentials_enabled": bool(os.getenv("CREDENTIALS_MASTER_KEY")),
     }
