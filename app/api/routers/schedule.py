@@ -9,6 +9,7 @@ from app.api.auth import current_user
 from app.api.files import (
     MAX_FILE_BYTES,
     MAX_PHOTO_BYTES,
+    check_mini_app_size,
     fetch_telegram_file,
     send_and_cleanup,
 )
@@ -59,6 +60,9 @@ async def upload_schedule(
         raise HTTPException(status_code=400, detail="empty file")
 
     content_type = (file.content_type or "application/octet-stream").lower()
+    # Mini App uploads are capped at 4MB by Vercel's serverless body limit.
+    # Larger files must come through the Telegram bot chat.
+    check_mini_app_size(data)
     is_image = content_type.startswith("image/")
     limit = MAX_PHOTO_BYTES if is_image else MAX_FILE_BYTES
     if len(data) > limit:

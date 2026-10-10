@@ -105,6 +105,16 @@ export default function NotesPage() {
       setBanner("فایل جزوه را انتخاب کنید.");
       return;
     }
+    // Client-side size guard: Vercel serverless caps request bodies at
+    // 4.5MB. Files larger than 4MB must go through the Telegram bot chat.
+    if (form.id === null && form.file && form.file.size > 4 * 1024 * 1024) {
+      setBanner(
+        "حجم فایل زیاد است. فایل‌های بزرگ‌تر از ۴ مگابایت را مستقیم به ربات تلگرام بفرست " +
+        "(در چت ربات، فایل را آپلود کن) — ربات خودکار ذخیره می‌کند.",
+      );
+      haptic("error");
+      return;
+    }
     const meta: NoteInput = {
       title,
       description: form.description.trim() || null,

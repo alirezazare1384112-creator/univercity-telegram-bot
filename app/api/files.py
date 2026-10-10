@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_FILE_BYTES = 20 * 1024 * 1024
 
+# Vercel serverless functions cap the request body at 4.5MB on the Hobby
+# plan. The Mini App upload path (which POSTs the whole file) must reject
+# anything above this *before* the platform returns a generic 413. Larger
+# files have to come through the Telegram bot chat (50MB limit).
+MINI_APP_UPLOAD_LIMIT = 4 * 1024 * 1024  # 4MB safety margin under 4.5MB
+
 # Types that must never be served as active content from our origin.
 _UNSAFE_MIME_PREFIXES = ("text/html", "application/xhtml", "image/svg")
 
@@ -144,6 +150,24 @@ def check_size(data: bytes, content_type: str) -> None:
     limit = MAX_PHOTO_BYTES if is_image else MAX_FILE_BYTES
     if len(data) > limit:
         raise HTTPException(status_code=413, detail="file too large")
+
+
+def check_mini_app_size(data: bytes) -> None:
+    """Reject files that exceed the Mini App upload path's hard limit.
+
+    Vercel serverless caps request bodies at 4.5MB. The Mini App cannot
+    upload anything larger; the user has to send the file to the bot
+    chat instead. Call this from every Mini App upload route so we
+    return a clear Persian error instead of Vercel's generic 413.
+    """
+    if len(data) > MINI_APP_UPLOAD_LIMIT:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "حجم فایل زیاد است. فایل‌های بزرگ‌تر از ۴ مگابایت را "
+                "مستقیم به ربات تلگرام بفرست (در چت ربات، فایل را آپلود کن)"
+            ),
+        )
 
 
 async def send_and_cleanup(

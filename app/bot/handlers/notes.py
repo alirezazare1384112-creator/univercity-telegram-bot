@@ -293,6 +293,8 @@ def _next_field(wizard: dict) -> str | None:
     except ValueError:  # pragma: no cover - defensive
         return None
     for candidate in CREATE_FIELDS[index + 1 :]:
+        if candidate == "file" and "file" in (wizard.get("data") or {}):
+            continue  # already captured (e.g. from a free file upload)
         if candidate == "course" and "course" in (wizard.get("data") or {}):
             continue  # already chosen on the course screen
         return candidate
@@ -482,19 +484,46 @@ async def on_file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def on_free_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """A photo/document sent outside the wizard: tell the user where to save it."""
+    """A photo/document sent outside the wizard: auto-start the wizard.
+
+    Previously this just showed a "go to the menu" message, which made
+    users send the file, get told to do something else, then have to
+    re-send the file inside the wizard — losing the original file_id
+    and forcing a re-upload.
+
+    Now we capture the file immediately and start the wizard with the
+    file already saved. The user only needs to type the title and pick
+    a course.
+    """
     user_id = await current_user_id(update, context)
     if user_id is None:
         return ConversationHandler.END
+
+    message = update.effective_message
+    extracted = _extract_file(message) if message is not None else None
+    if extracted is None:  # pragma: no cover - filters guarantee a file
+        return ConversationHandler.END
+
+    file_type, file_id, file_unique_id, file_name = extracted
+    # Pre-fill the wizard with the captured file and jump straight to
+    # the title field. ``_advance`` then walks title → course → description.
+    context.user_data["note_wizard"] = {
+        "mode": "add",
+        "field": "title",
+        "data": {
+            "file": (file_type, file_id, file_unique_id, file_name),
+        },
+    }
+    # Friendly message so the user knows the file was captured.
+    file_label = file_name or ("عکس" if file_type == NOTE_PHOTO else "سند")
     await answer(
         update,
         context,
-        "فایل دریافت شد، ولی ذخیره‌اش نیاز به مراحل دارد:\n"
-        f"• جزوه: «📚 {NOTES.split(' ', 1)[-1]}» → «{ADD_NOTE}»\n"
-        "• برنامه هفتگی: «📅 برنامه هفتگی»",
-        reply_markup=inline_buttons([[(ADD_NOTE, "note:add")]]),
+        f"✅ فایل «{file_label}» ذخیره شد.\n"
+        "حالا عنوان جزوه را بنویس:",
+        reply_markup=inline_buttons([[(CANCEL, "note:cancel")]]),
     )
-    return ConversationHandler.END
+    return NoteState.WIZARD
 
 
 async def on_course_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
