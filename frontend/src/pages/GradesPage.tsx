@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { EditIcon, TrashIcon, XIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
@@ -302,34 +303,39 @@ export default function GradesPage() {
                 <button
                   type="button"
                   onClick={() => openEdit(item)}
-                  className="flex-1 rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                  className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-black/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80"
                 >
-                  ✏️ ویرایش
+                  <EditIcon className="h-4 w-4" />
+                  ویرایش
                 </button>
                 {confirmId === item.id ? (
                   <>
                     <button
                       type="button"
                       onClick={() => void remove(item.id)}
-                      className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+                      className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
                     >
+                      <TrashIcon className="h-4 w-4" />
                       حذف شود
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      title="انصراف"
                     >
-                      انصراف
+                      <XIcon className="h-4 w-4" />
                     </button>
                   </>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setConfirmId(item.id)}
-                    className="rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    className="flex items-center justify-center gap-1 rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    title="حذف"
                   >
-                    🗑 حذف
+                    <TrashIcon className="h-4 w-4" />
+                    حذف
                   </button>
                 )}
               </div>

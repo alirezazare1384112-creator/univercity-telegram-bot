@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EditIcon, PlusIcon, TrashIcon, XIcon } from "../components/Icons";
 import ImageViewer from "../components/ImageViewer";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
@@ -231,9 +232,10 @@ export default function NotesPage() {
         <button
           type="button"
           onClick={openCreate}
-          className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+          className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
         >
-          + افزودن
+          <PlusIcon className="h-4 w-4" />
+          افزودن
         </button>
       </div>
 
@@ -295,7 +297,7 @@ export default function NotesPage() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white active:opacity-80 disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white active:opacity-80 disabled:opacity-60"
             >
               {saving ? "در حال ذخیره…" : "ذخیره"}
             </button>
@@ -305,8 +307,9 @@ export default function NotesPage() {
                 setForm(null);
                 setBanner(null);
               }}
-              className="flex-1 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold active:opacity-80"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold active:opacity-80"
             >
+              <XIcon className="h-4 w-4" />
               انصراف
             </button>
           </div>
@@ -430,9 +433,10 @@ export default function NotesPage() {
                 <button
                   type="button"
                   onClick={() => openEdit(note)}
-                  className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                  className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80"
+                  title="ویرایش"
                 >
-                  ✏️
+                  <EditIcon className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
@@ -449,25 +453,28 @@ export default function NotesPage() {
                     <button
                       type="button"
                       onClick={() => void remove(note.id)}
-                      className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+                      className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
                     >
+                      <TrashIcon className="h-4 w-4" />
                       حذف شود
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      title="انصراف"
                     >
-                      انصراف
+                      <XIcon className="h-4 w-4" />
                     </button>
                   </>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setConfirmId(note.id)}
-                    className="rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    title="حذف"
                   >
-                    🗑
+                    <TrashIcon className="h-4 w-4" />
                   </button>
                 )}
               </div>
