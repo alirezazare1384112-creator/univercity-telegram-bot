@@ -18,7 +18,14 @@ from app.api.auth import (
     user_from_init_data,
     verify_file_token,
 )
-from app.api.files import bot_of, check_size, fetch_telegram_file, safe_media_type, send_and_cleanup
+from app.api.files import (
+    bot_of,
+    check_mini_app_size,
+    check_size,
+    fetch_telegram_file,
+    safe_media_type,
+    send_and_cleanup,
+)
 from app.api.routers.courses import _own_course
 from app.api.schemas import FileTokenOut, NoteIn, NoteOut
 from app.config import get_settings
@@ -89,6 +96,11 @@ async def create_note(
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
     content_type = (file.content_type or "application/octet-stream").lower()
+    # Mini App uploads are capped at 4MB by the Vercel serverless body
+    # limit (4.5MB hard). Larger files must come through the Telegram bot
+    # chat. This check fires *before* we forward anything to Telegram so
+    # the user gets a clear Persian error instead of a Vercel 413.
+    check_mini_app_size(data)
     check_size(data, content_type)
 
     bot = bot_of(request)

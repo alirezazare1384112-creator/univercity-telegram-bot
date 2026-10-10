@@ -286,13 +286,25 @@ async def test_text_is_rejected_while_waiting_for_the_file(db):
     assert "فایل جزوه را بفرست" in context.sent_texts[-1]
 
 
-async def test_file_outside_the_wizard_is_explained(db):
+async def test_file_outside_the_wizard_auto_starts(db):
+    """A file sent outside the wizard is captured and the wizard starts.
+
+    Previously the bot just told the user to "go to the menu", which
+    forced a re-upload. Now the file is captured immediately and the
+    wizard jumps to the title field with the file already saved.
+    """
     context = await _register(7008)
 
     state = await on_free_file(make_photo_update(user_id=7008), context)
 
-    assert state == ConversationHandler.END
-    assert any("دریافت شد" in text for text in context.sent_texts)
+    # The wizard should now be active (waiting for the title).
+    assert state == NoteState.WIZARD
+    assert any("ذخیره شد" in text for text in context.sent_texts)
+    # The file should be captured in the wizard data, not yet in the DB
+    # (the note is only created after the title is typed).
+    wizard = context.user_data.get("note_wizard")
+    assert wizard is not None
+    assert "file" in wizard.get("data", {})
     user_id = context.user_data["user_id"]
     async with get_session() as session:
         assert await NoteRepository(session).count(user_id) == 0
