@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { EditIcon, TrashIcon, XIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import {
@@ -376,34 +377,38 @@ export default function CalendarPage() {
                       <button
                         type="button"
                         onClick={() => openEdit(event)}
-                        className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                        className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80"
+                        title="ویرایش"
                       >
-                        ✏️
+                        <EditIcon className="h-4 w-4" />
                       </button>
                       {confirmId === event.id ? (
                         <>
                           <button
                             type="button"
                             onClick={() => void remove(event.id)}
-                            className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+                            className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
                           >
+                            <TrashIcon className="h-4 w-4" />
                             حذف شود
                           </button>
                           <button
                             type="button"
                             onClick={() => setConfirmId(null)}
-                            className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                            className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                            title="انصراف"
                           >
-                            انصراف
+                            <XIcon className="h-4 w-4" />
                           </button>
                         </>
                       ) : (
                         <button
                           type="button"
                           onClick={() => setConfirmId(event.id)}
-                          className="rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                          className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                          title="حذف"
                         >
-                          🗑
+                          <TrashIcon className="h-4 w-4" />
                         </button>
                       )}
                     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { EditIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -199,9 +200,10 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={openEdit}
-              className="rounded-xl bg-blue-600/10 px-3 py-1.5 text-xs font-bold text-blue-700 active:opacity-80"
+              className="flex items-center gap-1 rounded-xl bg-blue-600/10 px-3 py-1.5 text-xs font-bold text-blue-700 active:opacity-80"
             >
-              ✏️ ویرایش
+              <EditIcon className="h-3.5 w-3.5" />
+              ویرایش
             </button>
           </div>
           <dl className="mt-3 flex flex-col gap-2">

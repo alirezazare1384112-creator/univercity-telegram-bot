@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TrashIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
@@ -181,9 +182,9 @@ export default function AnnouncementsPage() {
                   type="button"
                   onClick={() => void removeChannel(channel.id)}
                   aria-label="حذف کانال"
-                  className="shrink-0 text-red-600/80 active:opacity-80"
+                  className="flex shrink-0 items-center justify-center text-red-600/80 active:opacity-80"
                 >
-                  🗑
+                  <TrashIcon className="h-4 w-4" />
                 </button>
               </li>
             ))}
@@ -332,9 +333,10 @@ export default function AnnouncementsPage() {
                   <button
                     type="button"
                     onClick={() => setConfirmId(announcement.id)}
-                    className="rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    title="حذف"
                   >
-                    🗑
+                    <TrashIcon className="h-4 w-4" />
                   </button>
                 )}
               </div>

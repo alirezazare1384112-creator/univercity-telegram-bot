@@ -1,4 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  CheckIcon,
+  CopyIcon,
+  EditIcon,
+  ExternalLinkIcon,
+  LockIcon,
+  PlusIcon,
+  TrashIcon,
+  XIcon,
+} from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -271,9 +281,10 @@ export default function LinksPage() {
         <button
           type="button"
           onClick={openCreate}
-          className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+          className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
         >
-          + افزودن
+          <PlusIcon className="h-4 w-4" />
+          افزودن
         </button>
       </div>
 
@@ -353,8 +364,9 @@ export default function LinksPage() {
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white active:opacity-80 disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white active:opacity-80 disabled:opacity-60"
             >
+              <CheckIcon className="h-4 w-4" />
               {saving ? "در حال ذخیره…" : "ذخیره"}
             </button>
             <button
@@ -363,8 +375,9 @@ export default function LinksPage() {
                 setForm(null);
                 setBanner(null);
               }}
-              className="flex-1 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold active:opacity-80"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold active:opacity-80"
             >
+              <XIcon className="h-4 w-4" />
               انصراف
             </button>
           </div>
@@ -403,45 +416,54 @@ export default function LinksPage() {
                   type="button"
                   onClick={() => void openLink(link)}
                   disabled={opening === link.id}
-                  className="flex-1 rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs font-bold text-blue-700 active:opacity-80 disabled:opacity-60"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs font-bold text-blue-700 active:opacity-80 disabled:opacity-60"
                 >
+                  {link.has_credentials ? (
+                    <LockIcon className="h-4 w-4" />
+                  ) : (
+                    <ExternalLinkIcon className="h-4 w-4" />
+                  )}
                   {opening === link.id
                     ? "در حال باز کردن…"
                     : link.has_credentials
-                      ? "🔐 ورود خودکار"
-                      : "🔗 باز کردن"}
+                      ? "ورود خودکار"
+                      : "باز کردن"}
                 </button>
                 <button
                   type="button"
                   onClick={() => openEdit(link)}
-                  className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                  className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold text-blue-700 active:opacity-80"
+                  title="ویرایش"
                 >
-                  ✏️
+                  <EditIcon className="h-4 w-4" />
                 </button>
                 {confirmId === link.id ? (
                   <>
                     <button
                       type="button"
                       onClick={() => void remove(link.id)}
-                      className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+                      className="flex items-center gap-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
                     >
+                      <TrashIcon className="h-4 w-4" />
                       حذف شود
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      className="rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80"
+                      title="انصراف"
                     >
-                      انصراف
+                      <XIcon className="h-4 w-4" />
                     </button>
                   </>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setConfirmId(link.id)}
-                    className="rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-xs font-bold text-red-700 active:opacity-80"
+                    title="حذف"
                   >
-                    🗑
+                    <TrashIcon className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -457,13 +479,17 @@ export default function LinksPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-bold">🔐 «{helper.link.title}»</h3>
+              <h3 className="flex items-center gap-1.5 text-base font-bold">
+                <LockIcon className="h-5 w-5 text-blue-600" />
+                «{helper.link.title}»
+              </h3>
               <button
                 type="button"
                 onClick={() => setHelper(null)}
-                className="rounded-lg bg-black/10 px-2 py-1 text-xs"
+                className="flex items-center justify-center rounded-lg bg-black/10 p-1.5 text-xs"
+                title="بستن"
               >
-                ✕
+                <XIcon className="h-4 w-4" />
               </button>
             </div>
 
@@ -481,9 +507,16 @@ export default function LinksPage() {
                   onClick={() => void copyUser()}
                   className="flex items-center justify-between rounded-xl bg-blue-600 px-4 py-4 text-white active:opacity-80"
                 >
-                  <span className="text-sm font-bold">📋 کپی نام کاربری</span>
+                  <span className="flex items-center gap-1.5 text-sm font-bold">
+                    {helper.copied === "user" ? (
+                      <CheckIcon className="h-4 w-4" />
+                    ) : (
+                      <CopyIcon className="h-4 w-4" />
+                    )}
+                    کپی نام کاربری
+                  </span>
                   <span className="max-w-[50%] truncate text-xs opacity-80" dir="ltr">
-                    {helper.copied === "user" ? "✅ کپی شد" : helper.creds.username}
+                    {helper.copied === "user" ? "کپی شد" : helper.creds.username}
                   </span>
                 </button>
 
@@ -493,9 +526,16 @@ export default function LinksPage() {
                   onClick={() => void copyPass()}
                   className="flex items-center justify-between rounded-xl bg-blue-600 px-4 py-4 text-white active:opacity-80"
                 >
-                  <span className="text-sm font-bold">📋 کپی رمز عبور</span>
+                  <span className="flex items-center gap-1.5 text-sm font-bold">
+                    {helper.copied === "pass" ? (
+                      <CheckIcon className="h-4 w-4" />
+                    ) : (
+                      <CopyIcon className="h-4 w-4" />
+                    )}
+                    کپی رمز عبور
+                  </span>
                   <span className="text-xs opacity-80">
-                    {helper.copied === "pass" ? "✅ کپی شد" : "••••••••"}
+                    {helper.copied === "pass" ? "کپی شد" : "••••••••"}
                   </span>
                 </button>
 
@@ -503,9 +543,10 @@ export default function LinksPage() {
                   href={helper.link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl bg-black/10 px-4 py-3 text-center text-sm font-bold active:opacity-80"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-black/10 px-4 py-3 text-center text-sm font-bold active:opacity-80"
                 >
-                  🔗 باز کردن دوباره سایت
+                  <ExternalLinkIcon className="h-4 w-4" />
+                  باز کردن دوباره سایت
                 </a>
 
                 <p className="text-center text-[11px] opacity-60">
