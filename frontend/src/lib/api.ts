@@ -12,6 +12,7 @@ import type {
   GradeInput,
   GradeItem,
   GradesSummary,
+  LinkBookmarklet,
   LinkCredentials,
   LinkInput,
   Me,
@@ -182,6 +183,8 @@ export const api = {
     request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }),
   linkCredentials: (id: number) =>
     request<LinkCredentials>(`/api/links/${id}/credentials`),
+  linkBookmarklet: (id: number) =>
+    request<LinkBookmarklet>(`/api/links/${id}/bookmarklet`),
   updateMe: (payload: ProfileInput) => request<Me>("/api/me", jsonInit("PUT", payload)),
   adminStats: () => request<AdminStats>("/api/admin/stats"),
   adminUsers: (limit = 50) => request<AdminUsers>(`/api/admin/users?limit=${limit}`),

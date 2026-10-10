@@ -3,7 +3,7 @@ import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { getWebApp } from "../lib/telegram";
-import type { LinkInput, UniversityLink } from "../lib/types";
+import type { LinkBookmarklet, LinkInput, UniversityLink } from "../lib/types";
 
 type PageState =
   | { kind: "loading" }
@@ -36,32 +36,6 @@ function haptic(type: "success" | "error"): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "ارتباط با سرور برقرار نشد";
-}
-
-/**
- * Try to open a link with credentials embedded as ``https://user:pass@host``.
- * Telegram's in-app browser and most desktop browsers accept this format for
- * HTTP Basic Auth sites. Returns true when the auto-login URL was opened,
- * false when the caller should fall back to a plain URL open.
- *
- * We never embed credentials in the URL when the site uses HTTPS with a
- * different scheme (e.g. a query-param login form) because that would leak
- * them into browser history and server logs.
- */
-function tryBasicAuthAutoLogin(url: string, username: string, password: string): boolean {
-  try {
-    const parsed = new URL(url);
-    // Only attempt basic-auth auto-login on http(s). Never on javascript:, data:, etc.
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
-    // Skip when the URL already has credentials embedded.
-    if (parsed.username || parsed.password) return false;
-    parsed.username = encodeURIComponent(username);
-    parsed.password = encodeURIComponent(password);
-    window.open(parsed.toString(), "_blank");
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -98,6 +72,11 @@ export default function LinksPage() {
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
+  const [helper, setHelper] = useState<{
+    link: UniversityLink;
+    bookmarklet: LinkBookmarklet | null;
+    step: "loading" | "ready";
+  } | null>(null);
 
   const credentialsEnabled =
     state.status === "ready" ? state.user.credentials_enabled : false;
@@ -219,9 +198,9 @@ export default function LinksPage() {
   };
 
   /**
-   * Open a link. When credentials are stored, fetch them, copy the password
-   * to the clipboard, and try basic-auth auto-login first. Fall back to the
-   * plain URL when auto-login is not possible.
+   * Open a link. When credentials are stored, show a helper panel with
+   * the bookmarklet (one-tap install for true auto-login) plus copy
+   * buttons for username/password. When no credentials, just open.
    */
   const openLink = async (link: UniversityLink) => {
     if (!link.has_credentials) {
@@ -229,41 +208,32 @@ export default function LinksPage() {
       return;
     }
     setOpening(link.id);
+    setHelper({ link, bookmarklet: null, step: "loading" });
     try {
-      const creds = await api.linkCredentials(link.id);
-      if (!creds.has_credentials) {
-        window.open(link.url, "_blank");
-        return;
-      }
-      // Try basic-auth auto-login first (works for HTTP Basic Auth sites).
-      const opened = tryBasicAuthAutoLogin(
-        link.url,
-        creds.username ?? "",
-        creds.password ?? "",
-      );
-      if (opened) {
-        haptic("success");
-        setBanner(`🔐 ورود خودکار به «${link.title}» انجام شد.`);
-        return;
-      }
-      // Fall back: open the site + copy the password to the clipboard so
-      // the user can paste it with one tap.
-      const copied = await copyToClipboard(creds.password ?? "");
-      window.open(link.url, "_blank");
-      haptic("success");
-      setBanner(
-        copied
-          ? `🔑 رمز «${link.title}» کپی شد. در صفحهٔ ورود Ctrl+V بزن.`
-          : `🔑 نام کاربری: ${creds.username}`,
-      );
+      const bm = await api.linkBookmarklet(link.id);
+      setHelper({ link, bookmarklet: bm, step: "ready" });
     } catch (error: unknown) {
       setBanner(errorMessage(error));
       haptic("error");
-      // Still open the plain URL so the user is not stuck.
-      window.open(link.url, "_blank");
+      setHelper(null);
     } finally {
       setOpening(null);
     }
+  };
+
+  /** Copy the bookmarklet URL to the clipboard with instructions. */
+  const installBookmarklet = async () => {
+    if (!helper?.bookmarklet?.bookmarklet) return;
+    const ok = await copyToClipboard(helper.bookmarklet.bookmarklet);
+    haptic(ok ? "success" : "error");
+    setBanner(
+      ok
+        ? `✅ کد ورود خودکار کپی شد!\n` +
+          `۱. در مرورگر، این آدرس رو به‌عنوان بوک‌مارک ذخیره کن (نامش رو بذار «ورود ${helper.link.title}»).\n` +
+          `۲. وارد سایت ${helper.link.title} بشو.\n` +
+          `۳. روی بوک‌مارک بزن — فرم خودکار پر و ارسال می‌شه.`
+        : "کپی ناموفق بود. دوباره تلاش کن.",
+    );
   };
 
   if (page.kind === "loading") return <Spinner label="در حال بارگذاری لینک‌ها…" />;
@@ -470,6 +440,64 @@ export default function LinksPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {helper && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4" onClick={() => setHelper(null)}>
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 dark:bg-neutral-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold">🔐 ورود خودکار «{helper.link.title}»</h3>
+              <button
+                type="button"
+                onClick={() => setHelper(null)}
+                className="rounded-lg bg-black/10 px-2 py-1 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            {helper.step === "loading" ? (
+              <p className="py-4 text-center text-sm opacity-70">در حال آماده‌سازی…</p>
+            ) : helper.bookmarklet?.has_bookmarklet ? (
+              <div className="flex flex-col gap-3">
+                <div className="rounded-xl bg-blue-600/10 p-3 text-xs leading-6">
+                  <p className="mb-2 font-bold">📖 راهنما (یک‌بار نصب)</p>
+                  <p>۱. دکمهٔ «کپی کد» رو بزن.</p>
+                  <p>۲. در مرورگر، یه بوک‌مارک جدید بساز و این کد رو در فیلد آدرس paste کن.</p>
+                  <p>۳. وارد سایت {helper.link.title} بشو و روی بوک‌مارک بزن — فرم خودکار پر و ارسال می‌شه!</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void installBookmarklet()}
+                  className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white active:opacity-80"
+                >
+                  📋 کپی کد ورود خودکار
+                </button>
+
+                <a
+                  href={helper.link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl bg-black/10 px-4 py-3 text-center text-sm font-bold active:opacity-80"
+                >
+                  🔗 باز کردن سایت
+                </a>
+
+                <p className="text-center text-[11px] opacity-60">
+                  بعد از نصب بوک‌مارک، کافیه وارد سایت بشی و روش بزنی.
+                </p>
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm opacity-70">
+                ورود خودکار برای این لینک تنظیم نشده.
+              </p>
+            )}
+          </div>
+        </div>
       )}
     </section>
   );
