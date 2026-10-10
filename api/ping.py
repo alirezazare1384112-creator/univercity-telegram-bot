@@ -58,6 +58,14 @@ async def ping() -> dict:
                     )
                     db_info["users_total"] = total
                     db_info["users_with_photo"] = with_photo
+                    # Show the first user's photo_url so we can verify it's valid
+                    sample = await conn.fetchrow(
+                        "SELECT photo_url, first_name FROM users "
+                        "WHERE photo_url IS NOT NULL LIMIT 1"
+                    )
+                    if sample:
+                        db_info["sample_photo_url"] = str(sample["photo_url"])[:200]
+                        db_info["sample_first_name"] = sample["first_name"]
                 cols = await conn.fetch(
                     "SELECT column_name FROM information_schema.columns "
                     "WHERE table_name='university_links' "
