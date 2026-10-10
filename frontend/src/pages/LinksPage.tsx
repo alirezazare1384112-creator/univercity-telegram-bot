@@ -3,7 +3,7 @@ import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { getWebApp } from "../lib/telegram";
-import type { LinkBookmarklet, LinkInput, UniversityLink } from "../lib/types";
+import type { LinkCredentials, LinkInput, UniversityLink } from "../lib/types";
 
 type PageState =
   | { kind: "loading" }
@@ -74,8 +74,9 @@ export default function LinksPage() {
   const [opening, setOpening] = useState<number | null>(null);
   const [helper, setHelper] = useState<{
     link: UniversityLink;
-    bookmarklet: LinkBookmarklet | null;
+    creds: LinkCredentials | null;
     step: "loading" | "ready";
+    copied: "none" | "user" | "pass";
   } | null>(null);
 
   const credentialsEnabled =
@@ -198,9 +199,12 @@ export default function LinksPage() {
   };
 
   /**
-   * Open a link. When credentials are stored, show a helper panel with
-   * the bookmarklet (one-tap install for true auto-login) plus copy
-   * buttons for username/password. When no credentials, just open.
+   * Open a link. When credentials are stored:
+   * 1. Fetch the decrypted username + password
+   * 2. Open the site in a new tab (so the user sees the login form)
+   * 3. Show a sticky panel with two big "copy" buttons so the user can
+   *    paste each field with one tap. This works on every site, every
+   *    browser, every phone — no installation needed.
    */
   const openLink = async (link: UniversityLink) => {
     if (!link.has_credentials) {
@@ -208,10 +212,13 @@ export default function LinksPage() {
       return;
     }
     setOpening(link.id);
-    setHelper({ link, bookmarklet: null, step: "loading" });
+    setHelper({ link, creds: null, step: "loading", copied: "none" });
     try {
-      const bm = await api.linkBookmarklet(link.id);
-      setHelper({ link, bookmarklet: bm, step: "ready" });
+      const creds = await api.linkCredentials(link.id);
+      // Open the site immediately so the user sees the login form while
+      // the copy panel slides up.
+      window.open(link.url, "_blank");
+      setHelper({ link, creds, step: "ready", copied: "none" });
     } catch (error: unknown) {
       setBanner(errorMessage(error));
       haptic("error");
@@ -221,19 +228,20 @@ export default function LinksPage() {
     }
   };
 
-  /** Copy the bookmarklet URL to the clipboard with instructions. */
-  const installBookmarklet = async () => {
-    if (!helper?.bookmarklet?.bookmarklet) return;
-    const ok = await copyToClipboard(helper.bookmarklet.bookmarklet);
+  /** Copy the username to the clipboard and update the panel state. */
+  const copyUser = async () => {
+    if (!helper?.creds?.username) return;
+    const ok = await copyToClipboard(helper.creds.username);
     haptic(ok ? "success" : "error");
-    setBanner(
-      ok
-        ? `✅ کد ورود خودکار کپی شد!\n` +
-          `۱. در مرورگر، این آدرس رو به‌عنوان بوک‌مارک ذخیره کن (نامش رو بذار «ورود ${helper.link.title}»).\n` +
-          `۲. وارد سایت ${helper.link.title} بشو.\n` +
-          `۳. روی بوک‌مارک بزن — فرم خودکار پر و ارسال می‌شه.`
-        : "کپی ناموفق بود. دوباره تلاش کن.",
-    );
+    setHelper({ ...helper, copied: ok ? "user" : "none" });
+  };
+
+  /** Copy the password to the clipboard and update the panel state. */
+  const copyPass = async () => {
+    if (!helper?.creds?.password) return;
+    const ok = await copyToClipboard(helper.creds.password);
+    haptic(ok ? "success" : "error");
+    setHelper({ ...helper, copied: ok ? "pass" : "none" });
   };
 
   if (page.kind === "loading") return <Spinner label="در حال بارگذاری لینک‌ها…" />;
@@ -449,7 +457,7 @@ export default function LinksPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-bold">🔐 ورود خودکار «{helper.link.title}»</h3>
+              <h3 className="text-base font-bold">🔐 «{helper.link.title}»</h3>
               <button
                 type="button"
                 onClick={() => setHelper(null)}
@@ -461,21 +469,34 @@ export default function LinksPage() {
 
             {helper.step === "loading" ? (
               <p className="py-4 text-center text-sm opacity-70">در حال آماده‌سازی…</p>
-            ) : helper.bookmarklet?.has_bookmarklet ? (
+            ) : helper.creds?.has_credentials ? (
               <div className="flex flex-col gap-3">
-                <div className="rounded-xl bg-blue-600/10 p-3 text-xs leading-6">
-                  <p className="mb-2 font-bold">📖 راهنما (یک‌بار نصب)</p>
-                  <p>۱. دکمهٔ «کپی کد» رو بزن.</p>
-                  <p>۲. در مرورگر، یه بوک‌مارک جدید بساز و این کد رو در فیلد آدرس paste کن.</p>
-                  <p>۳. وارد سایت {helper.link.title} بشو و روی بوک‌مارک بزن — فرم خودکار پر و ارسال می‌شه!</p>
+                <div className="rounded-xl bg-green-600/10 p-3 text-xs leading-6 text-green-800 dark:text-green-300">
+                  ✅ سایت باز شد. حالا هر دکمه رو بزن و در فیلد مربوطه paste کن.
                 </div>
 
+                {/* Copy username button */}
                 <button
                   type="button"
-                  onClick={() => void installBookmarklet()}
-                  className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white active:opacity-80"
+                  onClick={() => void copyUser()}
+                  className="flex items-center justify-between rounded-xl bg-blue-600 px-4 py-4 text-white active:opacity-80"
                 >
-                  📋 کپی کد ورود خودکار
+                  <span className="text-sm font-bold">📋 کپی نام کاربری</span>
+                  <span className="max-w-[50%] truncate text-xs opacity-80" dir="ltr">
+                    {helper.copied === "user" ? "✅ کپی شد" : helper.creds.username}
+                  </span>
+                </button>
+
+                {/* Copy password button */}
+                <button
+                  type="button"
+                  onClick={() => void copyPass()}
+                  className="flex items-center justify-between rounded-xl bg-blue-600 px-4 py-4 text-white active:opacity-80"
+                >
+                  <span className="text-sm font-bold">📋 کپی رمز عبور</span>
+                  <span className="text-xs opacity-80">
+                    {helper.copied === "pass" ? "✅ کپی شد" : "••••••••"}
+                  </span>
                 </button>
 
                 <a
@@ -484,11 +505,11 @@ export default function LinksPage() {
                   rel="noreferrer"
                   className="rounded-xl bg-black/10 px-4 py-3 text-center text-sm font-bold active:opacity-80"
                 >
-                  🔗 باز کردن سایت
+                  🔗 باز کردن دوباره سایت
                 </a>
 
                 <p className="text-center text-[11px] opacity-60">
-                  بعد از نصب بوک‌مارک، کافیه وارد سایت بشی و روش بزنی.
+                  در صفحه ورود: فیلد نام کاربری را بزن → Ctrl+V → فیلد رمز را بزن → Ctrl+V → دکمه ورود
                 </p>
               </div>
             ) : (
