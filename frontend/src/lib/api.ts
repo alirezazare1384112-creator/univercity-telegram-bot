@@ -59,9 +59,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = authHeaders();
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
 
-  const response = await fetch(path, { ...init, headers });
-  if (!response.ok) throw await toError(response);
-  return (await response.json()) as T;
+  // 30s timeout: serverless cold starts can be slow, but anything longer
+  // than 30s is almost certainly a hung connection. The AbortController
+  // lets us reject cleanly instead of leaving the user on a spinner.
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(path, { ...init, headers, signal: controller.signal });
+    if (!response.ok) throw await toError(response);
+    return (await response.json()) as T;
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(0, "زمان درخواست به پایان رسید. دوباره تلاش کنید.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function jsonInit(method: string, payload: unknown): RequestInit {

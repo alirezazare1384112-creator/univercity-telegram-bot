@@ -45,10 +45,11 @@ export default function AdminPage() {
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 403) {
         setPage({ kind: "denied" });
+        // Being denied is expected for non-admins — don't vibrate.
       } else {
         setPage({ kind: "error", message: errorMessage(error) });
+        haptic("error");
       }
-      haptic("error");
     }
   }, []);
 

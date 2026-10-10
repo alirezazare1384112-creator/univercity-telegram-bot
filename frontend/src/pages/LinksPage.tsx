@@ -225,9 +225,6 @@ export default function LinksPage() {
     setHelper({ link, creds: null, step: "loading", copied: "none" });
     try {
       const creds = await api.linkCredentials(link.id);
-      // Open the site immediately so the user sees the login form while
-      // the copy panel slides up.
-      window.open(link.url, "_blank");
       setHelper({ link, creds, step: "ready", copied: "none" });
     } catch (error: unknown) {
       setBanner(errorMessage(error));
@@ -289,7 +286,7 @@ export default function LinksPage() {
       </div>
 
       {banner && (
-        <p className="rounded-xl bg-blue-600/10 px-3 py-2 text-center text-xs text-blue-700">
+        <p className="rounded-xl bg-red-600/10 px-3 py-2 text-center text-xs text-red-700">
           {banner}
         </p>
       )}

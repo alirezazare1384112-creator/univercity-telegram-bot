@@ -55,9 +55,12 @@ export default function DashboardPage() {
       });
   }, []);
 
+  // Re-fetch when the auth user changes (e.g. after a profile edit)
+  // so the dashboard doesn't show stale data.
+  const userId = state.status === "ready" ? state.user.id : null;
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, userId]);
 
   if (page.kind === "loading") return <Spinner label="در حال بارگذاری داشبورد…" />;
   if (page.kind === "error") {

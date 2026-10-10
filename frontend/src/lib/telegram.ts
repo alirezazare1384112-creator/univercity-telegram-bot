@@ -25,6 +25,7 @@ export interface TelegramWebApp {
     show(): void;
     hide(): void;
     onClick(callback: () => void): void;
+    offClick(callback: () => void): void;
   };
   MainButton: {
     text: string;
@@ -56,6 +57,14 @@ export function applyTheme(webApp: TelegramWebApp): void {
   if (bg) root.style.setProperty("--tg-bg", bg);
   if (text) root.style.setProperty("--tg-text", text);
   if (bg) webApp.setBackgroundColor(bg);
+  // Toggle the .dark class so Tailwind's `dark:` variant works.
+  // Without this, dark: classes only respond to OS prefers-color-scheme,
+  // which is wrong inside Telegram (Telegram has its own theme setting).
+  if (webApp.colorScheme === "dark") {
+    root.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+  }
 }
 
 export function initTelegram(): TelegramWebApp | null {
@@ -63,5 +72,7 @@ export function initTelegram(): TelegramWebApp | null {
   if (!webApp) return null;
   webApp.ready();
   applyTheme(webApp);
+  // Re-apply theme when Telegram switches light/dark mid-session.
+  webApp.onEvent?.("themeChanged", () => applyTheme(webApp));
   return webApp;
 }

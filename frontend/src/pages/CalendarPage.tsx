@@ -343,7 +343,7 @@ export default function CalendarPage() {
                 {group.events.map((event) => (
                   <li
                     key={event.id}
-                    className="rounded-2xl bg-black/5 p-4 opacity-100"
+                    className="rounded-2xl bg-black/5 p-4"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

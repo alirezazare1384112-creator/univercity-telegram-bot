@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
+import { getWebApp } from "../lib/telegram";
 import type { GradesSummary } from "../lib/types";
 
 type PageState =
@@ -28,6 +29,7 @@ export default function GradesSummaryPage() {
       setPage({ kind: "ready", data });
     } catch (error: unknown) {
       setPage({ kind: "error", message: errorMessage(error) });
+      getWebApp()?.HapticFeedback?.notificationOccurred("error");
     }
   }, []);
 
