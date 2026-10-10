@@ -23,15 +23,16 @@ class MeOut(BaseModel):
     first_name: str | None
     last_name: str | None
     photo_url: str | None = None
+    # Signed token for loading the photo via /api/me/photo?token=...
+    # (browsers cannot send the initData header in an <img> tag, so we
+    # proxy the image through our own server with a short-lived token).
+    photo_token: str | None = None
     student_number: str | None
     field_of_study: str | None
     university: str | None
     semester: str | None
     bio: str | None
     is_admin: bool = False
-    # True when the server has a CREDENTIALS_MASTER_KEY configured and can
-    # therefore store/retrieve link credentials. The Mini App uses this
-    # to show or hide the "save login" toggle on the links page.
     credentials_enabled: bool = False
 
 

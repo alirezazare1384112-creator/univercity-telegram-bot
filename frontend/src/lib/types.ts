@@ -5,6 +5,7 @@ export interface Me {
   first_name: string | null;
   last_name: string | null;
   photo_url: string | null;
+  photo_token: string | null;
   student_number: string | null;
   field_of_study: string | null;
   university: string | null;

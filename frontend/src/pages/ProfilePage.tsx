@@ -6,26 +6,28 @@ import { useAuth } from "../lib/auth";
 import { getWebApp } from "../lib/telegram";
 import type { ProfileInput } from "../lib/types";
 
-// Telegram photo URLs are served from https://telegram.org/img/... and use
-// the standard Telegram avatar transformation. We fall back to the first
-// letter of the user's first name (or "ک") when no photo is set.
+// Telegram photo URLs redirect through t.me → telesco.pe CDN which may
+// not load inside Telegram's in-app browser. When a photo_token is
+// available, we proxy the image through our own /api/me/photo endpoint
+// (same origin, no redirect, no referrer issues). When the token is
+// missing or the proxy fails, we fall back to the first letter.
 function Avatar({
-  photoUrl,
+  photoToken,
   firstLetter,
   size = "h-14 w-14 text-xl",
 }: {
-  photoUrl: string | null;
+  photoToken: string | null;
   firstLetter: string;
   size?: string;
 }) {
   const [errored, setErrored] = useState(false);
+  const src = photoToken ? `/api/me/photo?token=${encodeURIComponent(photoToken)}` : null;
 
-  if (photoUrl && !errored) {
+  if (src && !errored) {
     return (
       <img
-        src={photoUrl}
+        src={src}
         alt="عکس پروفایل"
-        referrerPolicy="no-referrer"
         onError={() => setErrored(true)}
         className={`${size} shrink-0 rounded-full object-cover bg-blue-600`}
       />
@@ -129,7 +131,7 @@ export default function ProfilePage() {
     <section className="flex flex-col gap-4">
       <div className="flex items-center gap-3 rounded-2xl bg-black/5 p-4">
         <Avatar
-          photoUrl={user.photo_url}
+          photoToken={user.photo_token}
           firstLetter={(user.first_name || "ک").slice(0, 1)}
         />
         <div className="min-w-0">
