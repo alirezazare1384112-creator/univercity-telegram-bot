@@ -36,44 +36,36 @@ async def ping() -> dict:
     db_url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or ""
     if db_url:
         try:
-            import asyncio
-
             import asyncpg
 
-            async def _probe() -> dict:
-                # asyncpg wants postgresql:// not postgresql+asyncpg://
-                clean = db_url
-                for prefix in ("postgresql+asyncpg://", "postgresql://", "postgres://"):
-                    if clean.startswith(prefix):
-                        clean = "postgresql://" + clean[len(prefix):]
-                        break
-                conn = await asyncpg.connect(clean, ssl="require")
-                try:
-                    # Check if photo_url column exists
-                    col = await conn.fetchval(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name='users' AND column_name='photo_url'"
+            # asyncpg wants postgresql:// not postgresql+asyncpg://
+            clean = db_url
+            for prefix in ("postgresql+asyncpg://", "postgresql://", "postgres://"):
+                if clean.startswith(prefix):
+                    clean = "postgresql://" + clean[len(prefix):]
+                    break
+            conn = await asyncpg.connect(clean, ssl="require")
+            try:
+                col = await conn.fetchval(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name='users' AND column_name='photo_url'"
+                )
+                db_info["users_has_photo_url"] = bool(col)
+                if col:
+                    total = await conn.fetchval("SELECT count(*) FROM users")
+                    with_photo = await conn.fetchval(
+                        "SELECT count(*) FROM users WHERE photo_url IS NOT NULL"
                     )
-                    db_info["users_has_photo_url"] = bool(col)
-                    if col:
-                        total = await conn.fetchval("SELECT count(*) FROM users")
-                        with_photo = await conn.fetchval(
-                            "SELECT count(*) FROM users WHERE photo_url IS NOT NULL"
-                        )
-                        db_info["users_total"] = total
-                        db_info["users_with_photo"] = with_photo
-                    # Check university_links credential columns
-                    cols = await conn.fetch(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name='university_links' "
-                        "AND column_name IN ('ciphertext_b64','wrapped_key_b64')"
-                    )
-                    db_info["links_has_cred_columns"] = len(cols)
-                finally:
-                    await conn.close()
-                return db_info
-
-            db_info = asyncio.run(_probe())
+                    db_info["users_total"] = total
+                    db_info["users_with_photo"] = with_photo
+                cols = await conn.fetch(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name='university_links' "
+                    "AND column_name IN ('ciphertext_b64','wrapped_key_b64')"
+                )
+                db_info["links_has_cred_columns"] = len(cols)
+            finally:
+                await conn.close()
         except Exception as exc:  # noqa: BLE001
             db_info["db_error"] = f"{type(exc).__name__}: {exc}"[:200]
 
