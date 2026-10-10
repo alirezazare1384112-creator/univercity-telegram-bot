@@ -93,6 +93,11 @@ async def user_from_init_data(init_data: str) -> User:
     has a profile photo. The URL is part of the signed initData, so it
     is safe to trust and store. Telegram rotates the URL on each
     initData, so we always store the freshest copy.
+
+    On every Mini App login we also ensure the default reminders
+    (food reservation at 5 PM) exist. The function is idempotent: if
+    the user already has a reminder with the same title, it is skipped.
+    Users who delete a default reminder will not get it re-created.
     """
     settings = get_settings()
     try:
@@ -113,6 +118,22 @@ async def user_from_init_data(init_data: str) -> User:
             last_name=user_data.get("last_name"),
             photo_url=user_data.get("photo_url"),
         )
+        # Auto-provision default reminders (food reservation at 5 PM).
+        # Cheap on repeat visits: one SELECT per default title, no writes.
+        if settings.default_reminders_enabled:
+            from app.services.reminder_service import ensure_default_reminders
+
+            try:
+                await ensure_default_reminders(session, user.id, settings.timezone)
+            except Exception:
+                # A failed reminder creation must not prevent the user
+                # from opening the Mini App. The error is logged; the
+                # user can still create reminders manually.
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "ensure_default_reminders failed for user %s", user.id
+                )
     return user
 
 

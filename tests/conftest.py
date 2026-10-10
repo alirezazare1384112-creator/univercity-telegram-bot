@@ -105,6 +105,10 @@ def deterministic_settings(monkeypatch):
     monkeypatch.setenv("API_HOST", "127.0.0.1")
     monkeypatch.setenv("API_PORT", "8000")
     monkeypatch.setenv("WEBAPP_AUTH_MAX_AGE", "86400")
+    # Disable auto-provisioned default reminders in tests so the reminder
+    # API tests see an empty list on first login. The default-reminder
+    # feature has its own dedicated tests.
+    monkeypatch.setenv("DEFAULT_REMINDERS_ENABLED", "false")
     reset_settings_cache()
     yield
     reset_settings_cache()

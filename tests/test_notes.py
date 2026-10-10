@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from telegram.ext import ConversationHandler
 
 from app.bot.handlers.notes import (
     build_conversation,
