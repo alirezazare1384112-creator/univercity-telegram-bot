@@ -1,9 +1,18 @@
 @import "tailwindcss";
 
+/* Tailwind v4: make `dark:` respond to the `.dark` class on <html>,
+   not the OS-level prefers-color-scheme. We toggle the class from
+   applyTheme() based on Telegram's colorScheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --tg-bg: #ffffff;
   --tg-text: #1b1b1b;
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 html,
@@ -18,4 +27,44 @@ body {
   background: var(--tg-bg);
   color: var(--tg-text);
   -webkit-font-smoothing: antialiased;
+  /* Smooth background transitions when switching light/dark */
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Visible focus ring for keyboard users (Tailwind v4 preflight removes
+   default outlines). Mouse clicks don't trigger :focus-visible, so
+   this only helps keyboard navigation. */
+:focus-visible {
+  outline: 2px solid theme(colors.blue.500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect users who prefer reduced motion (vestibular disorders, etc.).
+   Disables all animations and transitions site-wide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Smooth page transitions: fade-in new content */
+main {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

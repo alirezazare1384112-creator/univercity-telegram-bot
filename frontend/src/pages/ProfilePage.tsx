@@ -60,7 +60,7 @@ const PROFILE_FIELDS: { key: keyof ProfileInput; label: string; placeholder: str
 ];
 
 export default function ProfilePage() {
-  const { state, retry } = useAuth();
+  const { state, retry, updateUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<ProfileInput | null>(null);
   const [saving, setSaving] = useState(false);
@@ -112,11 +112,13 @@ export default function ProfilePage() {
     };
     setSaving(true);
     try {
-      await api.updateMe(payload);
+      const updatedUser = await api.updateMe(payload);
       haptic("success");
       setEditing(false);
       setBanner(null);
-      retry();
+      // Patch the user in place instead of triggering a full re-fetch
+      // (which would flash a spinner and re-run ensure_default_reminders).
+      updateUser(updatedUser);
     } catch (error: unknown) {
       setBanner(errorMessage(error));
       haptic("error");

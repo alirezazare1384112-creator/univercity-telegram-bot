@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { EditIcon, TrashIcon, XIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
+import { parseNumber } from "../lib/persian";
 import { getWebApp } from "../lib/telegram";
 import {
   GRADE_KINDS,
@@ -97,8 +98,8 @@ export default function GradesPage() {
   const save = async () => {
     if (!form) return;
     const title = form.title.trim();
-    const score = Number(form.score.replace(/٫/g, "."));
-    const maxScore = Number(form.max_score.replace(/٫/g, "."));
+    const score = parseNumber(form.score);
+    const maxScore = parseNumber(form.max_score);
     if (!title) {
       setBanner("عنوان نمره را وارد کنید.");
       return;

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import BottomNav from "./components/BottomNav";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import Spinner from "./components/Spinner";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { getWebApp } from "./lib/telegram";
@@ -28,9 +29,15 @@ function BackButtonController() {
   useEffect(() => {
     const button = getWebApp()?.BackButton;
     if (!button) return;
-    button.onClick(() => {
+    // Store the callback so we can remove it on cleanup. Without this,
+    // every re-mount of Root appends a new listener → multiple navigate(-1).
+    const handler = () => {
       if (window.location.hash.replace("#", "") !== "/") navigate(-1);
-    });
+    };
+    button.onClick(handler);
+    return () => {
+      button.offClick(handler);
+    };
   }, [navigate]);
 
   useEffect(() => {
@@ -58,30 +65,44 @@ function DeepLinkController() {
   return null;
 }
 
+/** Scrolls to top on every route change. Without this, navigating from
+ *  a long page (e.g. Notes with 20 items) to another route keeps the
+ *  scroll position — users see the bottom of the new page. */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 function Shell() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-md flex-col">
       <BackButtonController />
       <DeepLinkController />
+      <ScrollToTop />
       <main className="flex-1 p-4 pb-24">
-        <Suspense fallback={<Spinner />}>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/schedule" element={<SchedulePage />} />
-            <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/courses/:courseId/grades" element={<GradesPage />} />
-            <Route path="/grades" element={<GradesSummaryPage />} />
-            <Route path="/gpa" element={<GpaPage />} />
-            <Route path="/notes" element={<NotesPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/reminders" element={<RemindersPage />} />
-            <Route path="/announcements" element={<AnnouncementsPage />} />
-            <Route path="/links" element={<LinksPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<Spinner />}>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/schedule" element={<SchedulePage />} />
+              <Route path="/courses" element={<CoursesPage />} />
+              <Route path="/courses/:courseId/grades" element={<GradesPage />} />
+              <Route path="/grades" element={<GradesSummaryPage />} />
+              <Route path="/gpa" element={<GpaPage />} />
+              <Route path="/notes" element={<NotesPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/reminders" element={<RemindersPage />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
+              <Route path="/links" element={<LinksPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <BottomNav />
     </div>

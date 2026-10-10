@@ -19,7 +19,10 @@ type AuthState =
 
 interface AuthContextValue {
   state: AuthState;
+  /** Re-fetch /api/me from scratch (full loading state). */
   retry: () => void;
+  /** Patch the current user without re-fetching (e.g. after profile edit). */
+  updateUser: (user: Me) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -39,6 +42,7 @@ function reportBoot(payload: Record<string, unknown>): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
   const attemptRef = useRef(0);
+  const probeTimeoutRef = useRef<number | null>(null);
 
   const retry = useCallback(() => {
     const attempt = ++attemptRef.current;
@@ -85,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Some Android clients deliver initData a moment after page load;
       // probe for ~8s before concluding the app was opened without auth data.
       if (round < 26) {
-        window.setTimeout(() => probe(round + 1), 300);
+        probeTimeoutRef.current = window.setTimeout(() => probe(round + 1), 300);
         return;
       }
       reportBoot({ event: "guest", initDataLen: 0 });
@@ -95,11 +99,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     probe(0);
   }, []);
 
+  /** Patch the user in place without a full re-fetch. Used by the profile
+   *  page after a successful edit so the screen doesn't flash a spinner. */
+  const updateUser = useCallback((user: Me) => {
+    setState({ status: "ready", user });
+  }, []);
+
   useEffect(() => {
     retry();
+    // Cleanup: clear any pending probe timeout when the provider unmounts
+    // so we don't try to setState on an unmounted component.
+    return () => {
+      if (probeTimeoutRef.current !== null) {
+        window.clearTimeout(probeTimeoutRef.current);
+      }
+    };
   }, [retry]);
 
-  return <AuthContext.Provider value={{ state, retry }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ state, retry, updateUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
