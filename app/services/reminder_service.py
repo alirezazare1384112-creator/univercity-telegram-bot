@@ -12,21 +12,28 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.database import get_session
 from app.database.models import Reminder
 from app.database.models.notification import STATUS_FAILED, STATUS_SENT, TYPE_REMINDER
-from app.database.models.reminder import ALERT_DAYS_1, ALERT_HOURS_1
+from app.database.models.reminder import (
+    ALERT_AT_TIME,
+    ALERT_DAYS_1,
+    ALERT_HOURS_1,
+    REPEAT_DAILY,
+)
 from app.database.repositories import NotificationLogRepository
 from app.database.repositories.reminder_repository import (
     ReminderNotificationRepository,
+    ReminderRepository,
     fire_datetimes,
     next_occurrence,
 )
-from app.utils.datetime_utils import format_jalali, utcnow_naive
+from app.utils.datetime_utils import format_jalali, get_tz, utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +47,19 @@ ALERT_PREFIX = {
 # (instead of unbounded ``asyncio.gather``) so a burst of 50 due alerts
 # does not trip the global rate limit and get the bot throttled.
 _SEND_CONCURRENCY = 10
+
+# Default reminders auto-created for every Mini App user. Users can edit
+# or delete these like any other reminder. The title is the dedup key:
+# if a reminder with the same title already exists, it is not re-created.
+DEFAULT_REMINDERS: tuple[dict[str, object], ...] = (
+    {
+        "title": "رزرو غذا",
+        "description": "یادآوری روزانه برای رزرو غذا",
+        "hour": 17,
+        "minute": 0,
+        "repeat": REPEAT_DAILY,
+    },
+)
 
 
 @dataclass(slots=True)
@@ -232,3 +252,70 @@ async def process_due_notifications(
         counters["advanced"] = await advance_repeating(session)
 
     return counters
+
+
+async def ensure_default_reminders(
+    session: AsyncSession, user_id: int, timezone_name: str
+) -> int:
+    """Create default reminders (food reservation at 5 PM) for a user.
+
+    Called when a user opens the Mini App for the first time (or any time
+    they don't yet have the defaults). The title is the dedup key: if a
+    reminder with the same title already exists, it is skipped. This means
+    users who delete a default reminder will not get it re-created on
+    their next login (the absence is respected).
+
+    The reminder fires every day at the configured local time (17:00
+    Tehran by default) and repeats daily. Users can edit the time, change
+    the alert offsets, pause it, or delete it from the Mini App or the
+    Telegram bot menu.
+    """
+    tz = get_tz(timezone_name)
+    now = utcnow_naive()
+    now_local = now.replace(tzinfo=UTC).astimezone(tz)
+    repo = ReminderRepository(session)
+    created = 0
+
+    for default in DEFAULT_REMINDERS:
+        title = str(default["title"])
+        # Check if a reminder with this title already exists for the user.
+        existing = await session.execute(
+            select(Reminder).where(
+                Reminder.user_id == user_id,
+                Reminder.title == title,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            continue
+
+        # Calculate the next occurrence: today at hour:minute local, or
+        # tomorrow if that moment has already passed.
+        hour = int(default["hour"])  # type: ignore[arg-type]
+        minute = int(default["minute"])  # type: ignore[arg-type]
+        today_at_time = now_local.replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        if today_at_time <= now_local:
+            today_at_time = today_at_time + timedelta(days=1)
+
+        # Convert local time to naive UTC for storage.
+        reminder_datetime = today_at_time.astimezone(UTC).replace(tzinfo=None)
+
+        reminder = await repo.create(
+            user_id=user_id,
+            title=title,
+            description=str(default["description"]),
+            reminder_datetime=reminder_datetime,
+            repeat_type=str(default["repeat"]),
+            is_active=True,
+        )
+        await sync_notifications(session, reminder, [ALERT_AT_TIME], now=now)
+        created += 1
+        logger.info(
+            "Created default reminder %r for user %s at %s",
+            title,
+            user_id,
+            reminder_datetime,
+        )
+
+    return created

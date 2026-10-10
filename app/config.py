@@ -123,6 +123,9 @@ class Settings:
     # (envelope encryption). When empty, link credentials are rejected at
     # write time so the feature fails closed instead of storing plaintext.
     credentials_master_key: str = ""
+    # When True, every Mini App login auto-creates the default reminders
+    # (food reservation at 5 PM). Set to False to disable.
+    default_reminders_enabled: bool = True
 
     def is_admin(self, telegram_id: int) -> bool:
         """Access to the admin panel is granted by Telegram id only."""
@@ -191,6 +194,8 @@ def _read_settings() -> Settings:
         api_port=_read_int(os.getenv("API_PORT", ""), 8000, minimum=1),
         webapp_auth_max_age=_read_int(os.getenv("WEBAPP_AUTH_MAX_AGE", ""), 86400, minimum=60),
         credentials_master_key=os.getenv("CREDENTIALS_MASTER_KEY", "").strip(),
+        default_reminders_enabled=os.getenv("DEFAULT_REMINDERS_ENABLED", "true").strip().lower()
+        not in ("0", "false", "no", "off"),
     )
 
 
