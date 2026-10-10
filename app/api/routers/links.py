@@ -174,3 +174,85 @@ async def get_link_credentials(
         "password": payload.get("password", ""),
         "url": link.url,
     }
+
+
+@router.get("/links/{link_id}/bookmarklet")
+async def get_link_bookmarklet(
+    link_id: int,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Return a ``javascript:`` bookmarklet URL that auto-fills the login form.
+
+    The bookmarklet is a small piece of JavaScript that, when saved as a
+    browser bookmark and tapped on the target site's login page, finds the
+    username and password fields, fills them, and submits the form. This is
+    the only way to achieve true auto-login on sites that use form-based
+    authentication (which is virtually all modern sites).
+
+    The credentials are embedded in the bookmarklet as plaintext JavaScript
+    string literals. This is acceptable because:
+
+    - The bookmarklet lives in the user's own browser bookmarks.
+    - The user explicitly generated it for their own use.
+    - There is no way to auto-fill a form without the plaintext being
+      present in the JavaScript that runs on the page.
+
+    The script tries multiple common selector strategies for username and
+    password fields, then submits the first form it finds. It works on
+    most Iranian university portals (Golestan, food systems, LMS).
+    """
+    if not get_settings().credentials_enabled:
+        raise HTTPException(status_code=503, detail="credential feature is disabled")
+    async with get_session() as session:
+        link = await LinkRepository(session).get(link_id, user.id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="link not found")
+    if not link.has_credentials:
+        return {"has_bookmarklet": False}
+    try:
+        ciphertext, wrapped_key = from_storage(
+            link.ciphertext_b64 or "", link.wrapped_key_b64 or ""
+        )
+        payload = decrypt_credential(ciphertext, wrapped_key)
+    except CredentialKeyError as exc:
+        raise HTTPException(status_code=500, detail="credential cannot be decrypted") from exc
+
+    # Build the bookmarklet. The JS tries several common input selectors,
+    # fills the first match, and submits the enclosing form. Escaped for
+    # use in a javascript: URL.
+    import json as _json
+    import urllib.parse
+
+    username = payload.get("username", "")
+    password = payload.get("password", "")
+
+    js_code = f"""(function(){{
+var u={_json.dumps(username)},p={_json.dumps(password)};
+function setVal(el,v){{
+  try{{
+    var proto=Object.getPrototypeOf(el);
+    var setter=Object.getOwnPropertyDescriptor(proto,'value')||{{}};
+    if(setter&&setter.set){{setter.set.call(el,v);}}
+    else{{el.value=v;}}
+    el.dispatchEvent(new Event('input',{{bubbles:true}}));
+    el.dispatchEvent(new Event('change',{{bubbles:true}}));
+  }}catch(e){{el.value=v;}}
+}}
+var uf,pf;
+var selectors=['input[name="username"]','input[name="user"]','input[name="login"]','input[name="UserID"]','input[name="uid"]','input[name="student_number"]','input[name="stid"]','input[name="national_id"]','input[name="code"]','input[type="text"]','input[type="email"]','input:not([type])'];
+for(var i=0;i<selectors.length;i++){{var els=document.querySelectorAll(selectors[i]);for(var j=0;j<els.length;j++){{if(els[j].offsetParent!==null){{uf=els[j];break;}}}}if(uf)break;}}
+var pfs=document.querySelectorAll('input[type="password"]');
+for(var k=0;k<pfs.length;k++){{if(pfs[k].offsetParent!==null){{pf=pfs[k];break;}}}}
+if(uf){{setVal(uf,u);}}
+if(pf){{setVal(pf,p);}}
+if(uf||pf){{var form=(pf||uf).closest('form');if(form){{form.submit();}}else{{alert('فرم پیدا نشد. مقادیر پر شدند؛ دکمه ورود را دستی بزنید.');}}}}
+else{{alert('فیلد ورودی پیدا نشد. شاید در صفحه اشتباهی هستید.');}}
+}})()"""
+
+    bookmarklet_url = "javascript:" + urllib.parse.quote(js_code, safe="")
+    return {
+        "has_bookmarklet": True,
+        "bookmarklet": bookmarklet_url,
+        "title": link.title,
+        "url": link.url,
+    }

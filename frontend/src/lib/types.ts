@@ -274,3 +274,10 @@ export interface LinkCredentials {
   password?: string;
   url?: string;
 }
+
+export interface LinkBookmarklet {
+  has_bookmarklet: boolean;
+  bookmarklet?: string;
+  title?: string;
+  url?: string;
+}
