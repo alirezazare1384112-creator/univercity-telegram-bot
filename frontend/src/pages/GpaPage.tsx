@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { PlusIcon, TrashIcon, XIcon } from "../components/Icons";
 import { getWebApp } from "../lib/telegram";
 
-const KEY = "moadel-data-v1";
+const KEY = "moadel-data-v2";
 
 type Cell = string | number;
 
@@ -22,7 +23,7 @@ interface GpaState {
   current: CourseRow[];
 }
 
-type PageConfirm = "register" | "defaults" | "clear";
+type PageConfirm = "register" | "clear";
 type RowTarget = { table: "current" | "past"; index: number };
 
 interface Calc {
@@ -42,18 +43,12 @@ function haptic(type: "success" | "error"): void {
   getWebApp()?.HapticFeedback?.notificationOccurred(type);
 }
 
+/** Empty default — no pre-filled courses or past GPA. The user starts
+ *  with a single blank row and adds their own. */
 function defaultState(): GpaState {
   return {
-    past: [{ title: "سوابق تاکنون", units: 73, gpa: 14.51 }],
-    current: [
-      { name: "طراحی پایگاه داده", units: 3, grade: "" },
-      { name: "هوش مصنوعی", units: 3, grade: "" },
-      { name: "ارائه پژوهش", units: 3, grade: "" },
-      { name: "سیستم عامل", units: 3, grade: "" },
-      { name: "مهندسی نرم‌افزار", units: 3, grade: "" },
-      { name: "دانش خانواده", units: 2, grade: "" },
-      { name: "تربیت بدنی", units: 1, grade: "" },
-    ],
+    past: [],
+    current: [{ name: "", units: "3", grade: "" }],
   };
 }
 
@@ -104,9 +99,7 @@ function fa2(value: number): string {
 }
 
 function faU(value: number): string {
-  return Number.isInteger(value)
-    ? value.toLocaleString("fa-IR")
-    : fa2(value);
+  return Number.isInteger(value) ? value.toLocaleString("fa-IR") : fa2(value);
 }
 
 function calcOf(state: GpaState): Calc {
@@ -162,30 +155,49 @@ function calcOf(state: GpaState): Calc {
   };
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub: string }) {
+function gpaColor(gpa: number | null): string {
+  if (gpa === null) return "text-white";
+  if (gpa >= 17) return "text-emerald-300";
+  if (gpa >= 14) return "text-amber-300";
+  return "text-red-300";
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  accent?: string;
+}) {
   return (
-    <div className="rounded-2xl bg-black/5 p-3.5">
+    <div className="rounded-2xl bg-black/5 p-4 transition-colors dark:bg-white/5">
       <p className="text-[11px] opacity-70">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
+      <p className={`mt-1 text-2xl font-bold ${accent ?? ""}`}>{value}</p>
       <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>
     </div>
   );
 }
 
-const GRID_COLS = "grid grid-cols-[minmax(0,1fr)_50px_56px_26px] gap-1.5";
+const GRID_COLS = "grid grid-cols-[minmax(0,1fr)_50px_56px_32px] gap-2";
 
 function rowInputClass(bad: boolean, center: boolean): string {
   return [
-    "w-full rounded-lg border bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-500 dark:bg-black/20",
+    "w-full rounded-lg border bg-white px-2.5 py-2 text-xs outline-none transition-colors",
+    "focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
+    "dark:bg-black/30 dark:text-white",
     center ? "text-center" : "",
-    bad ? "border-red-400" : "border-black/10",
+    bad ? "border-red-400 bg-red-50 dark:bg-red-900/20" : "border-black/10 dark:border-white/10",
   ]
     .filter(Boolean)
     .join(" ");
 }
 
 function rowDeleteClass(): string {
-  return "flex h-full min-h-[30px] items-center justify-center rounded-lg bg-black/5 text-xs text-red-600 active:opacity-80 dark:bg-white/10";
+  return "flex h-full min-h-[34px] items-center justify-center rounded-lg bg-red-600/10 text-red-600 transition-colors active:opacity-80 dark:text-red-400 dark:bg-red-900/20";
 }
 
 export default function GpaPage() {
@@ -193,13 +205,19 @@ export default function GpaPage() {
   const [confirm, setConfirm] = useState<PageConfirm | null>(null);
   const [delRow, setDelRow] = useState<RowTarget | null>(null);
 
+  // Debounced localStorage write: every 500ms instead of every keystroke.
+  const [debouncedState, setDebouncedState] = useState(state);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedState(state), 500);
+    return () => window.clearTimeout(t);
+  }, [state]);
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      localStorage.setItem(KEY, JSON.stringify(debouncedState));
     } catch {
       /* حالت خصوصی یا پر بودن حافظه: رد می‌کنیم */
     }
-  }, [state]);
+  }, [debouncedState]);
 
   const s = useMemo(() => calcOf(state), [state]);
 
@@ -241,6 +259,7 @@ export default function GpaPage() {
 
   function deleteRowConfirmed(): void {
     if (!delRow) return;
+    haptic("success");
     if (delRow.table === "current") {
       setState((prev) => ({
         ...prev,
@@ -274,13 +293,8 @@ export default function GpaPage() {
       return;
     }
     haptic("success");
-    if (confirm === "defaults") {
-      setDelRow(null);
-      setState((prev) => ({ ...prev, current: defaultState().current }));
-    } else if (confirm === "clear") {
-      setDelRow(null);
-      setState({ past: [], current: [{ name: "", units: "3", grade: "" }] });
-    }
+    setDelRow(null);
+    setState({ past: [], current: [{ name: "", units: "3", grade: "" }] });
     setConfirm(null);
   }
 
@@ -289,9 +303,7 @@ export default function GpaPage() {
       ? s.missing > 0
         ? `${faU(s.missing)} درس هنوز نمره ندارد. با همین وضعیت ثبت شود؟ ترم جاری به سوابق اضافه و جدول دروس پاک می‌شود.`
         : "این ترم به سوابق اضافه شود و جدول دروس پاک شود؟"
-      : confirm === "defaults"
-        ? "دروس ترم جاری به حالت پیش‌فرض برگردد؟"
-        : "همه داده‌ها (سوابق و ترم جاری) پاک شود؟";
+      : "همه داده‌ها (سوابق و ترم جاری) پاک شود؟";
 
   const warnings: string[] = [];
   if (s.missing > 0) {
@@ -315,10 +327,13 @@ export default function GpaPage() {
         </p>
       </div>
 
-      <section className="rounded-2xl bg-gradient-to-bl from-indigo-600 to-indigo-800 p-5 text-white">
+      {/* Hero card with gradient + GPA color coding */}
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-800 p-6 text-white shadow-lg shadow-indigo-500/20">
         <p className="text-xs opacity-90">معدل کل (سوابق + ترم جاری)</p>
-        <p className="mt-1 text-3xl font-bold">{s.cumGpa === null ? "—" : fa2(s.cumGpa)}</p>
-        <p className="mt-1 text-xs opacity-90">{heroSub}</p>
+        <p className={`mt-2 text-5xl font-black tracking-tight ${gpaColor(s.cumGpa)}`}>
+          {s.cumGpa === null ? "—" : fa2(s.cumGpa)}
+        </p>
+        <p className="mt-2 text-xs opacity-90">{heroSub}</p>
       </section>
 
       <section className="grid grid-cols-2 gap-3">
@@ -328,23 +343,19 @@ export default function GpaPage() {
           sub={
             s.semGpa === null
               ? "نمره‌ای وارد نشده"
-              : `${faU(s.gradedUnits)} واحد نمره‌دار از ${faU(s.curUnits)}`
+              : `${faU(s.gradedUnits)} واحد از ${faU(s.curUnits)}`
           }
+          accent={s.semGpa !== null ? gpaColor(s.semGpa).replace("text-white", "text-indigo-600 dark:text-indigo-400") : ""}
         />
         <Stat
-          label="کل واحدهای گذرانده"
+          label="کل واحدها"
           value={faU(s.totalUnits)}
           sub={`این ترم: ${faU(s.gradedUnits)} واحد`}
-        />
-        <Stat
-          label="سوابق قبلی"
-          value={s.pastUnits > 0 ? fa2(s.pastPoints / s.pastUnits) : "—"}
-          sub={`${faU(s.pastUnits)} واحد`}
         />
       </section>
 
       {warnings.length > 0 ? (
-        <p className="rounded-xl bg-amber-500/15 px-3 py-2 text-xs leading-6 text-amber-800 dark:text-amber-300">
+        <p className="rounded-2xl bg-amber-500/15 px-4 py-3 text-xs leading-6 text-amber-800 dark:text-amber-300">
           ⚠ {warnings.join(" ")}
         </p>
       ) : null}
@@ -355,39 +366,29 @@ export default function GpaPage() {
             type="button"
             onClick={() => setConfirm("register")}
             disabled={s.semGpa === null}
-            className="rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white active:opacity-80 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-opacity active:opacity-80 disabled:opacity-50"
           >
-            ثبت ترم جاری در سوابق
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirm("defaults")}
-            className="rounded-xl bg-black/10 px-3.5 py-2 text-xs font-bold active:opacity-80 dark:bg-white/10"
-          >
-            بازگردانی دروس پیش‌فرض
+            ✓ ثبت ترم در سوابق
           </button>
           <button
             type="button"
             onClick={() => setConfirm("clear")}
-            className="rounded-xl bg-red-600/10 px-3.5 py-2 text-xs font-bold text-red-700 active:opacity-80"
+            className="flex items-center gap-1.5 rounded-xl bg-red-600/10 px-4 py-2.5 text-xs font-bold text-red-700 transition-colors active:opacity-80 dark:text-red-400"
           >
-            پاک کردن همه داده‌ها
+            <TrashIcon className="h-4 w-4" />
+            پاک کردن همه
           </button>
         </div>
         {confirm !== null ? (
-          <div className="rounded-2xl bg-amber-500/10 p-3">
+          <div className="rounded-2xl bg-amber-500/10 p-4">
             <p className="text-xs leading-6">{confirmText}</p>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 onClick={confirmYes}
                 className={[
-                  "flex-1 rounded-xl px-3 py-2 text-xs font-bold text-white active:opacity-80",
-                  confirm === "register"
-                    ? "bg-emerald-600"
-                    : confirm === "clear"
-                      ? "bg-red-600"
-                      : "bg-blue-600",
+                  "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold text-white transition-opacity active:opacity-80",
+                  confirm === "register" ? "bg-emerald-600" : "bg-red-600",
                 ].join(" ")}
               >
                 بله
@@ -395,36 +396,24 @@ export default function GpaPage() {
               <button
                 type="button"
                 onClick={() => setConfirm(null)}
-                className="flex-1 rounded-xl bg-black/10 px-3 py-2 text-xs font-bold active:opacity-80 dark:bg-white/10"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black/10 px-3 py-2.5 text-xs font-bold transition-colors active:opacity-80 dark:bg-white/10"
               >
+                <XIcon className="h-4 w-4" />
                 انصراف
               </button>
             </div>
           </div>
         ) : null}
-        <p className="text-[11px] leading-6 opacity-60">
-          فرمول: معدل کل = (واحد×معدل سوابق + واحد×نمرهٔ دروس این ترم) ÷ مجموع واحدها
-          <br />
-          یعنی ({fa2(s.pastPoints)} + {fa2(s.curPoints)}) ÷ {fa2(s.totalUnits)}
-          {s.missing > 0 ? (
-            <>
-              {" "}
-              — <span className="font-bold">تا وقتی نمرهٔ همهٔ دروس را وارد کنید، معدل کل نهایی نیست.</span>
-            </>
-          ) : null}
-        </p>
       </section>
 
-      <section className="rounded-2xl bg-black/5 p-4">
+      {/* Current semester courses */}
+      <section className="rounded-2xl bg-black/5 p-4 dark:bg-white/5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold">📚 دروس ترم جاری</h2>
-          <span className="rounded-full bg-black/10 px-2.5 py-1 text-[11px] font-bold opacity-70 dark:bg-white/10">
-            مجموع واحدها: {faU(s.curUnits)}
+          <span className="rounded-full bg-black/10 px-3 py-1 text-[11px] font-bold opacity-70 dark:bg-white/10">
+            {faU(s.curUnits)} واحد
           </span>
         </div>
-        <p className="mt-1 text-[11px] opacity-70">
-          نمره بین ۰ تا ۲۰ وارد کنید؛ درس‌های بدون نمره لحاظ نمی‌شوند.
-        </p>
 
         <div className={`${GRID_COLS} mt-3 text-[10px] font-bold opacity-60`}>
           <span>نام درس</span>
@@ -433,23 +422,25 @@ export default function GpaPage() {
           <span />
         </div>
 
-        <div className="mt-1.5 flex flex-col gap-1.5">
+        <div className="mt-2 flex flex-col gap-2">
           {state.current.map((course, i) => {
             if (delRow && delRow.table === "current" && delRow.index === i) {
               return (
-                <div key={i} className="grid grid-cols-2 gap-1.5">
+                <div key={i} className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={deleteRowConfirmed}
-                    className="rounded-lg bg-red-600 px-2 py-2 text-[11px] font-bold text-white active:opacity-80"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-2 py-2.5 text-[11px] font-bold text-white transition-opacity active:opacity-80"
                   >
+                    <TrashIcon className="h-3.5 w-3.5" />
                     حذف شود
                   </button>
                   <button
                     type="button"
                     onClick={() => setDelRow(null)}
-                    className="rounded-lg bg-black/10 px-2 py-2 text-[11px] font-bold active:opacity-80 dark:bg-white/10"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-black/10 px-2 py-2.5 text-[11px] font-bold transition-colors active:opacity-80 dark:bg-white/10"
                   >
+                    <XIcon className="h-3.5 w-3.5" />
                     انصراف
                   </button>
                 </div>
@@ -491,7 +482,7 @@ export default function GpaPage() {
                   onClick={() => setDelRow({ table: "current", index: i })}
                   className={rowDeleteClass()}
                 >
-                  ✕
+                  <XIcon className="h-3.5 w-3.5" />
                 </button>
               </div>
             );
@@ -501,23 +492,22 @@ export default function GpaPage() {
         <button
           type="button"
           onClick={addCourse}
-          className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-bold text-white transition-opacity active:opacity-80"
         >
-          + افزودن درس
+          <PlusIcon className="h-4 w-4" />
+          افزودن درس
         </button>
       </section>
 
-      <section className="rounded-2xl bg-black/5 p-4">
+      {/* Past semesters */}
+      <section className="rounded-2xl bg-black/5 p-4 dark:bg-white/5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold">🗂 سوابق ترم‌های قبلی</h2>
-          <span className="rounded-full bg-black/10 px-2.5 py-1 text-[11px] font-bold opacity-70 dark:bg-white/10">
+          <span className="rounded-full bg-black/10 px-3 py-1 text-[11px] font-bold opacity-70 dark:bg-white/10">
             {faU(s.pastUnits)} واحد
             {s.pastUnits > 0 ? ` · معدل ${fa2(s.pastPoints / s.pastUnits)}` : ""}
           </span>
         </div>
-        <p className="mt-1 text-[11px] opacity-70">
-          واحدهای گذرانده و معدل هر ترم قبلی (پیش‌فرض: ۷۳ واحد با معدل ۱۴٫۵۱)؛ قابل ویرایش است.
-        </p>
 
         <div className={`${GRID_COLS} mt-3 text-[10px] font-bold opacity-60`}>
           <span>شرح</span>
@@ -526,23 +516,25 @@ export default function GpaPage() {
           <span />
         </div>
 
-        <div className="mt-1.5 flex flex-col gap-1.5">
+        <div className="mt-2 flex flex-col gap-2">
           {state.past.map((row, i) => {
             if (delRow && delRow.table === "past" && delRow.index === i) {
               return (
-                <div key={i} className="grid grid-cols-2 gap-1.5">
+                <div key={i} className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={deleteRowConfirmed}
-                    className="rounded-lg bg-red-600 px-2 py-2 text-[11px] font-bold text-white active:opacity-80"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-2 py-2.5 text-[11px] font-bold text-white transition-opacity active:opacity-80"
                   >
+                    <TrashIcon className="h-3.5 w-3.5" />
                     حذف شود
                   </button>
                   <button
                     type="button"
                     onClick={() => setDelRow(null)}
-                    className="rounded-lg bg-black/10 px-2 py-2 text-[11px] font-bold active:opacity-80 dark:bg-white/10"
+                    className="flex items-center justify-center gap-1 rounded-lg bg-black/10 px-2 py-2.5 text-[11px] font-bold transition-colors active:opacity-80 dark:bg-white/10"
                   >
+                    <XIcon className="h-3.5 w-3.5" />
                     انصراف
                   </button>
                 </div>
@@ -582,7 +574,7 @@ export default function GpaPage() {
                   onClick={() => setDelRow({ table: "past", index: i })}
                   className={rowDeleteClass()}
                 >
-                  ✕
+                  <XIcon className="h-3.5 w-3.5" />
                 </button>
               </div>
             );
@@ -592,15 +584,14 @@ export default function GpaPage() {
         <button
           type="button"
           onClick={addPast}
-          className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80"
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-bold text-white transition-opacity active:opacity-80"
         >
-          + افزودن سوابق
+          <PlusIcon className="h-4 w-4" />
+          افزودن سوابق
         </button>
       </section>
 
       <footer className="text-center text-[11px] leading-6 opacity-60">
-        معدل کل = (سوابق قبلی + ترم جاری) ÷ مجموع کل واحدها
-        <br />
         داده‌ها فقط در همین دستگاه ذخیره می‌شوند.
       </footer>
     </div>
