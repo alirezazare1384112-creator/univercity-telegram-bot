@@ -86,6 +86,52 @@ function jsonInit(method: string, payload: unknown): RequestInit {
   };
 }
 
+// --- In-memory GET cache (stale-while-revalidate) ---
+// Cheap read-only endpoints (dashboard, courses list, notes list) are
+// cached for 30s. Navigating between pages no longer triggers a full
+// reload — the cached data shows instantly, then a background refresh
+// updates if needed.
+const CACHE_TTL_MS = 30_000;
+const _cache = new Map<string, { data: unknown; expires: number }>();
+
+function _cacheGet<T>(key: string): T | null {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    _cache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function _cachePut(key: string, data: unknown): void {
+  _cache.set(key, { data, expires: Date.now() + CACHE_TTL_MS });
+  // Cap the cache at 20 entries so memory doesn't grow unbounded.
+  if (_cache.size > 20) {
+    const oldest = _cache.keys().next().value;
+    if (oldest) _cache.delete(oldest);
+  }
+}
+
+/** Invalidate one cache entry (call after a mutation that changes the
+ *  data, e.g. after creating a note → invalidate "/api/notes"). */
+export function invalidateCache(path: string): void {
+  _cache.delete(path);
+}
+
+/** Clear every cached entry (used after logout / auth change). */
+export function clearApiCache(): void {
+  _cache.clear();
+}
+
+async function requestCached<T>(path: string): Promise<T> {
+  const cached = _cacheGet<T>(path);
+  if (cached !== null) return cached;
+  const data = await request<T>(path);
+  _cachePut(path, data);
+  return data;
+}
+
 async function requestBlob(path: string): Promise<Blob> {
   const response = await fetch(path, { headers: authHeaders() });
   if (!response.ok) throw await toError(response);
@@ -101,35 +147,73 @@ const noteTokens = new Map<number, { token: string; media_type: string; expires:
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
   me: () => request<Me>("/api/me"),
-  dashboard: () => request<Dashboard>("/api/dashboard"),
-  schedule: () => request<ScheduleInfo>("/api/schedule"),
+  dashboard: () => requestCached<Dashboard>("/api/dashboard"),
+  schedule: () => requestCached<ScheduleInfo>("/api/schedule"),
   scheduleFile: () => requestBlob("/api/schedule/file"),
   uploadSchedule: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<ScheduleInfo>("/api/schedule", { method: "POST", body: form });
+    return request<ScheduleInfo>("/api/schedule", { method: "POST", body: form }).then(
+      (r) => {
+        invalidateCache("/api/schedule");
+        return r;
+      },
+    );
   },
-  deleteSchedule: () => request<{ deleted: boolean }>("/api/schedule", { method: "DELETE" }),
-  courses: () => request<Course[]>("/api/courses"),
+  deleteSchedule: () =>
+    request<{ deleted: boolean }>("/api/schedule", { method: "DELETE" }).then((r) => {
+      invalidateCache("/api/schedule");
+      return r;
+    }),
+  courses: () => requestCached<Course[]>("/api/courses"),
   createCourse: (payload: CourseInput) =>
-    request<Course>("/api/courses", jsonInit("POST", payload)),
+    request<Course>("/api/courses", jsonInit("POST", payload)).then((r) => {
+      invalidateCache("/api/courses");
+      return r;
+    }),
   updateCourse: (id: number, payload: CourseInput) =>
-    request<Course>(`/api/courses/${id}`, jsonInit("PUT", payload)),
+    request<Course>(`/api/courses/${id}`, jsonInit("PUT", payload)).then((r) => {
+      invalidateCache("/api/courses");
+      return r;
+    }),
   deleteCourse: (id: number) =>
-    request<{ deleted: boolean }>(`/api/courses/${id}`, { method: "DELETE" }),
+    request<{ deleted: boolean }>(`/api/courses/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/courses");
+        return r;
+      },
+    ),
   courseGrades: (courseId: number) =>
-    request<CourseGrades>(`/api/courses/${courseId}/grades`),
-  gradesSummary: () => request<GradesSummary>("/api/grades"),
+    requestCached<CourseGrades>(`/api/courses/${courseId}/grades`),
+  gradesSummary: () => requestCached<GradesSummary>("/api/grades"),
   createGrade: (courseId: number, payload: GradeInput) =>
-    request<GradeItem>(`/api/courses/${courseId}/grades`, jsonInit("POST", payload)),
+    request<GradeItem>(`/api/courses/${courseId}/grades`, jsonInit("POST", payload)).then(
+      (r) => {
+        invalidateCache(`/api/courses/${courseId}/grades`);
+        invalidateCache("/api/grades");
+        return r;
+      },
+    ),
   updateGrade: (courseId: number, itemId: number, payload: GradeInput) =>
-    request<GradeItem>(`/api/courses/${courseId}/grades/${itemId}`, jsonInit("PUT", payload)),
+    request<GradeItem>(
+      `/api/courses/${courseId}/grades/${itemId}`,
+      jsonInit("PUT", payload),
+    ).then((r) => {
+      invalidateCache(`/api/courses/${courseId}/grades`);
+      invalidateCache("/api/grades");
+      return r;
+    }),
   deleteGrade: (courseId: number, itemId: number) =>
-    request<{ deleted: boolean }>(`/api/courses/${courseId}/grades/${itemId}`, {
-      method: "DELETE",
+    request<{ deleted: boolean }>(
+      `/api/courses/${courseId}/grades/${itemId}`,
+      { method: "DELETE" },
+    ).then((r) => {
+      invalidateCache(`/api/courses/${courseId}/grades`);
+      invalidateCache("/api/grades");
+      return r;
     }),
   notes: (courseId?: number) =>
-    request<Note[]>(
+    requestCached<Note[]>(
       courseId === undefined ? "/api/notes" : `/api/notes?course_id=${courseId}`,
     ),
   uploadNote: (file: File, meta: NoteInput) => {
@@ -138,12 +222,25 @@ export const api = {
     form.append("title", meta.title);
     if (meta.description) form.append("description", meta.description);
     if (meta.course_id != null) form.append("course_id", String(meta.course_id));
-    return request<Note>("/api/notes", { method: "POST", body: form });
+    return request<Note>("/api/notes", { method: "POST", body: form }).then((r) => {
+      invalidateCache("/api/notes");
+      invalidateCache("/api/dashboard");
+      return r;
+    });
   },
   updateNote: (id: number, payload: NoteInput) =>
-    request<Note>(`/api/notes/${id}`, jsonInit("PUT", payload)),
+    request<Note>(`/api/notes/${id}`, jsonInit("PUT", payload)).then((r) => {
+      invalidateCache("/api/notes");
+      return r;
+    }),
   deleteNote: (id: number) =>
-    request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }),
+    request<{ deleted: boolean }>(`/api/notes/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/notes");
+        invalidateCache("/api/dashboard");
+        return r;
+      },
+    ),
   sendNoteToTelegram: (id: number) =>
     request<{ sent: boolean }>(`/api/notes/${id}/send`, { method: "POST" }),
   noteFileToken: (id: number) => {
@@ -159,47 +256,96 @@ export const api = {
     });
   },
   calendarEvents: (done = false) =>
-    request<CalendarEvent[]>(`/api/calendar?done=${done}`),
+    requestCached<CalendarEvent[]>(`/api/calendar?done=${done}`),
   createEvent: (payload: CalendarEventInput) =>
-    request<CalendarEvent>("/api/calendar", jsonInit("POST", payload)),
+    request<CalendarEvent>("/api/calendar", jsonInit("POST", payload)).then((r) => {
+      invalidateCache("/api/calendar?done=false");
+      invalidateCache("/api/calendar?done=true");
+      return r;
+    }),
   updateEvent: (id: number, payload: CalendarEventInput) =>
-    request<CalendarEvent>(`/api/calendar/${id}`, jsonInit("PUT", payload)),
+    request<CalendarEvent>(`/api/calendar/${id}`, jsonInit("PUT", payload)).then((r) => {
+      invalidateCache("/api/calendar?done=false");
+      invalidateCache("/api/calendar?done=true");
+      return r;
+    }),
   deleteEvent: (id: number) =>
-    request<{ deleted: boolean }>(`/api/calendar/${id}`, { method: "DELETE" }),
+    request<{ deleted: boolean }>(`/api/calendar/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/calendar?done=false");
+        invalidateCache("/api/calendar?done=true");
+        return r;
+      },
+    ),
   reminders: (activeOnly = false) =>
-    request<Reminder[]>(`/api/reminders?active_only=${activeOnly}`),
+    requestCached<Reminder[]>(`/api/reminders?active_only=${activeOnly}`),
   createReminder: (payload: ReminderInput) =>
-    request<Reminder>("/api/reminders", jsonInit("POST", payload)),
+    request<Reminder>("/api/reminders", jsonInit("POST", payload)).then((r) => {
+      invalidateCache("/api/reminders?active_only=false");
+      invalidateCache("/api/reminders?active_only=true");
+      return r;
+    }),
   updateReminder: (id: number, payload: ReminderInput) =>
-    request<Reminder>(`/api/reminders/${id}`, jsonInit("PUT", payload)),
+    request<Reminder>(`/api/reminders/${id}`, jsonInit("PUT", payload)).then((r) => {
+      invalidateCache("/api/reminders?active_only=false");
+      invalidateCache("/api/reminders?active_only=true");
+      return r;
+    }),
   deleteReminder: (id: number) =>
-    request<{ deleted: boolean }>(`/api/reminders/${id}`, { method: "DELETE" }),
-  announcements: () => request<Announcement[]>("/api/announcements"),
+    request<{ deleted: boolean }>(`/api/reminders/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/reminders?active_only=false");
+        invalidateCache("/api/reminders?active_only=true");
+        return r;
+      },
+    ),
+  announcements: () => requestCached<Announcement[]>("/api/announcements"),
   announcementFile: (id: number) => requestBlob(`/api/announcements/${id}/file`),
   deleteAnnouncement: (id: number) =>
-    request<{ deleted: boolean }>(`/api/announcements/${id}`, { method: "DELETE" }),
-  channels: () => request<AnnouncementChannel[]>("/api/announcements/channels"),
+    request<{ deleted: boolean }>(`/api/announcements/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/announcements");
+        return r;
+      },
+    ),
+  channels: () => requestCached<AnnouncementChannel[]>("/api/announcements/channels"),
   addChannel: (url: string) =>
     request<AnnouncementChannel>(
       "/api/announcements/channels",
       jsonInit("POST", { url }),
-    ),
+    ).then((r) => {
+      invalidateCache("/api/announcements/channels");
+      return r;
+    }),
   deleteChannel: (id: number) =>
     request<{ deleted: boolean }>(`/api/announcements/channels/${id}`, {
       method: "DELETE",
+    }).then((r) => {
+      invalidateCache("/api/announcements/channels");
+      return r;
     }),
-  links: () => request<UniversityLink[]>("/api/links"),
+  links: () => requestCached<UniversityLink[]>("/api/links"),
   createLink: (payload: LinkInput) =>
-    request<UniversityLink>("/api/links", jsonInit("POST", payload)),
+    request<UniversityLink>("/api/links", jsonInit("POST", payload)).then((r) => {
+      invalidateCache("/api/links");
+      return r;
+    }),
   updateLink: (id: number, payload: LinkInput) =>
-    request<UniversityLink>(`/api/links/${id}`, jsonInit("PUT", payload)),
+    request<UniversityLink>(`/api/links/${id}`, jsonInit("PUT", payload)).then((r) => {
+      invalidateCache("/api/links");
+      return r;
+    }),
   deleteLink: (id: number) =>
-    request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }),
+    request<{ deleted: boolean }>(`/api/links/${id}`, { method: "DELETE" }).then((r) => {
+      invalidateCache("/api/links");
+      return r;
+    }),
   linkCredentials: (id: number) =>
     request<LinkCredentials>(`/api/links/${id}/credentials`),
   linkBookmarklet: (id: number) =>
     request<LinkBookmarklet>(`/api/links/${id}/bookmarklet`),
   updateMe: (payload: ProfileInput) => request<Me>("/api/me", jsonInit("PUT", payload)),
-  adminStats: () => request<AdminStats>("/api/admin/stats"),
-  adminUsers: (limit = 50) => request<AdminUsers>(`/api/admin/users?limit=${limit}`),
+  adminStats: () => requestCached<AdminStats>("/api/admin/stats"),
+  adminUsers: (limit = 50) =>
+    requestCached<AdminUsers>(`/api/admin/users?limit=${limit}`),
 };
