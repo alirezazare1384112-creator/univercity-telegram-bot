@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlusIcon, TrashIcon, XIcon } from "../components/Icons";
+import { api } from "../lib/api";
 import { getWebApp } from "../lib/telegram";
+import type { Course } from "../lib/types";
 
 const KEY = "moadel-data-v2";
 
@@ -204,6 +206,22 @@ export default function GpaPage() {
   const [state, setState] = useState<GpaState>(loadState);
   const [confirm, setConfirm] = useState<PageConfirm | null>(null);
   const [delRow, setDelRow] = useState<RowTarget | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  // Fetch the user's course list so the GPA page can offer them in a
+  // dropdown instead of forcing the user to re-type every course name.
+  const loadCourses = useCallback(async () => {
+    try {
+      const list = await api.courses();
+      setCourses(list);
+    } catch {
+      // Silent failure: the dropdown just shows "تایپ دستی" as fallback.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCourses();
+  }, [loadCourses]);
 
   // Debounced localStorage write: every 500ms instead of every keystroke.
   const [debouncedState, setDebouncedState] = useState(state);
@@ -453,13 +471,40 @@ export default function GpaPage() {
             const unitsBad = units === null || units < 0;
             return (
               <div key={i} className={`${GRID_COLS} items-center`}>
-                <input
-                  type="text"
-                  className={rowInputClass(false, false)}
-                  placeholder="نام درس"
-                  value={course.name == null ? "" : String(course.name)}
-                  onChange={(e) => updateCurrent(i, "name", e.target.value)}
-                />
+                {courses.length > 0 ? (
+                  <select
+                    className={rowInputClass(false, false)}
+                    value={String(course.name ?? "")}
+                    onChange={(e) => {
+                      // When the user picks a course from the dropdown,
+                      // auto-fill the units too so they don't have to.
+                      const chosen = courses.find((c) => c.name === e.target.value);
+                      updateCurrent(i, "name", e.target.value);
+                      if (chosen && !num(course.units)) {
+                        updateCurrent(i, "units", String(chosen.units));
+                      }
+                    }}
+                  >
+                    <option value="">— انتخاب درس —</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} ({c.units} واحد)
+                      </option>
+                    ))}
+                    {/* Allow free-text entry for courses not in the list */}
+                    {course.name && !courses.some((c) => c.name === course.name) ? (
+                      <option value={String(course.name)}>{String(course.name)}</option>
+                    ) : null}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    className={rowInputClass(false, false)}
+                    placeholder="نام درس"
+                    value={course.name == null ? "" : String(course.name)}
+                    onChange={(e) => updateCurrent(i, "name", e.target.value)}
+                  />
+                )}
                 <input
                   type="text"
                   inputMode="decimal"
