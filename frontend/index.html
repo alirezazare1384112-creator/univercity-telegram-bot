@@ -6,8 +6,12 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
+    <meta name="theme-color" content="#2563eb" />
     <title>دستیار دانشجو</title>
-    <script src="/telegram-web-app.js"></script>
+    <!-- Preconnect to Telegram's CDN so the WebApp script loads fast.
+         The script itself is deferred so it doesn't block the page. -->
+    <link rel="preconnect" href="https://telegram.org" crossorigin />
+    <script src="/telegram-web-app.js" defer></script>
   </head>
   <body>
     <div id="root"></div>

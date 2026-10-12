@@ -13,4 +13,25 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Split vendor libraries into separate chunks so they cache
+    // independently from app code. When we ship a bug fix, only the
+    // app chunk changes — React and Router stay cached in the user's
+    // browser.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("react-dom") || id.includes("/react/")) {
+              return "react-vendor";
+            }
+            if (id.includes("react-router")) {
+              return "router-vendor";
+            }
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 300,
+  },
 });
