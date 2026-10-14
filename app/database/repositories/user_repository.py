@@ -20,6 +20,17 @@ class UserRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_username(self, username: str) -> User | None:
+        """Case-insensitive username lookup (Telegram usernames are
+        case-insensitive). Returns the first active match or None."""
+        if not username:
+            return None
+        stmt = select(User).where(
+            User.username.ilike(username), User.is_active.is_(True)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_or_create_from_telegram(
         self,
         *,

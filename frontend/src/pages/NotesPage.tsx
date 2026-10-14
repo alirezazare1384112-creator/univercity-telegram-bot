@@ -208,18 +208,12 @@ export default function NotesPage() {
     if (!shareTarget) return;
     const trimmed = shareIdInput.trim();
     if (!trimmed) {
-      setBanner("شناسه تلگرام گیرنده را وارد کنید.");
-      return;
-    }
-    // Accept both plain digits and @username-style (rare for IDs).
-    const numericId = Number(trimmed.replace(/[^0-9]/g, ""));
-    if (!Number.isFinite(numericId) || numericId <= 0) {
-      setBanner("شناسه تلگرام باید عدد باشد.");
+      setBanner("نام کاربری یا شناسه گیرنده را وارد کنید.");
       return;
     }
     setSharing(true);
     try {
-      const result = await api.shareNote(shareTarget.id, numericId);
+      const result = await api.shareNote(shareTarget.id, trimmed);
       haptic("success");
       flashNotice(`جزوه برای ${result.recipient} ارسال شد ✅`);
       setShareTarget(null);
@@ -569,16 +563,15 @@ export default function NotesPage() {
 
             <input
               type="text"
-              inputMode="numeric"
               className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:bg-black/30 dark:text-white"
-              placeholder="شناسه تلگرام گیرنده (مثلاً ۱۲۳۴۵۶۷۸۹)"
+              placeholder="مثلاً @alireza یا 123456789"
               value={shareIdInput}
               onChange={(e) => setShareIdInput(e.target.value)}
               disabled={sharing}
               dir="ltr"
             />
             <p className="mt-2 text-[11px] leading-5 opacity-60">
-              💡 شناسه تلگرام را می‌توانید از تنظیمات تلگرام گیرنده پیدا کنید.
+              💡 می‌توانید <b>نام کاربری</b> تلگرام (مثل @alireza) یا <b>شناسه عددی</b> را وارد کنید.
               گیرنده باید حداقل یک‌بار ربات را باز کرده باشد.
             </p>
 

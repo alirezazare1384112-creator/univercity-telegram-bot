@@ -213,30 +213,59 @@ async def share_note(
     note_id: int,
     request: Request,
     user: Annotated[User, Depends(current_user)],
-    telegram_id: Annotated[int, Form()],
+    recipient: Annotated[str, Form()],
 ) -> dict[str, object]:
-    """Send one of my notes to another student by their Telegram ID.
+    """Send one of my notes to another student.
 
-    The recipient must have started the bot (so they have a row in
-    ``users``). We look them up by ``telegram_id``, then forward the
-    note's file_id to their chat with a caption that names the sender.
+    The ``recipient`` form field accepts either:
+    - a Telegram numeric ID (e.g. ``123456789``)
+    - a Telegram username with or without ``@`` (e.g. ``@alireza`` or ``alireza``)
+
+    The recipient must have started the bot at least once (so they have
+    a row in ``users``). We look them up, then forward the note's
+    file_id to their chat with a caption that names the sender.
 
     Returns ``{"sent": true, "recipient": "<first_name>"}`` on success.
     Raises 404 when the note or the recipient does not exist, and 502
     when Telegram rejects the send (e.g. the recipient blocked the bot).
     """
+    from app.database.repositories.user_repository import UserRepository
+
     async with get_session() as session:
         note = await NoteRepository(session).get(note_id, user.id)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
-    if telegram_id == user.telegram_id:
-        raise HTTPException(status_code=400, detail="نمی‌توانید جزوه را به خودتان بفرستید")
 
-    from app.database.repositories.user_repository import UserRepository
+    raw = (recipient or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="گیرنده را وارد کنید")
 
-    async with get_session() as session:
-        recipient = await UserRepository(session).get_by_telegram_id(telegram_id)
-    if recipient is None:
+    # Strip leading @ and whitespace; the user may paste "@alireza" or
+    # "  123456789  " — both should work.
+    cleaned = raw.lstrip("@").strip()
+
+    # Try numeric ID first, then fall back to username lookup.
+    recipient_user = None
+    if cleaned.isdigit():
+        tid = int(cleaned)
+        if tid == user.telegram_id:
+            raise HTTPException(
+                status_code=400, detail="نمی‌توانید جزوه را به خودتان بفرستید"
+            )
+        async with get_session() as session:
+            recipient_user = await UserRepository(session).get_by_telegram_id(tid)
+
+    if recipient_user is None:
+        # Username lookup (case-insensitive). Telegram usernames are
+        # case-insensitive in practice.
+        async with get_session() as session:
+            recipient_user = await UserRepository(session).get_by_username(cleaned)
+        if recipient_user is not None and recipient_user.telegram_id == user.telegram_id:
+            raise HTTPException(
+                status_code=400, detail="نمی‌توانید جزوه را به خودتان بفرستید"
+            )
+
+    if recipient_user is None:
         raise HTTPException(
             status_code=404,
             detail="این کاربر هنوز ربات را باز نکرده است. از او بخواهید ابتدا /start را بزند.",
@@ -244,30 +273,32 @@ async def share_note(
 
     bot = bot_of(request)
     sender_name = user.first_name or user.username or "کاربر"
-    caption = (
-        f"📥 جزوه از {sender_name}\n"
-        f"📌 {note.title}"
-    )
+    caption = f"📥 جزوه از {sender_name}\n📌 {note.title}"
     if note.description:
         caption += f"\n📝 {note.description}"
 
     try:
         if note.file_type == NOTE_PHOTO:
             await bot.send_photo(
-                chat_id=telegram_id, photo=note.file_id, caption=caption
+                chat_id=recipient_user.telegram_id,
+                photo=note.file_id,
+                caption=caption,
             )
         else:
             await bot.send_document(
-                chat_id=telegram_id, document=note.file_id, caption=caption
+                chat_id=recipient_user.telegram_id,
+                document=note.file_id,
+                caption=caption,
             )
     except TelegramError as exc:
-        # The recipient may have blocked the bot, or the chat may not
-        # exist. Surface a clear Persian error.
         raise HTTPException(
             status_code=502,
             detail="ارسال ناموفق بود. ممکن است کاربر ربات را مسدود کرده باشد.",
         ) from exc
-    return {"sent": True, "recipient": recipient.first_name or recipient.username or "کاربر"}
+    return {
+        "sent": True,
+        "recipient": recipient_user.first_name or recipient_user.username or "کاربر",
+    }
 
 
 @router.put("/notes/{note_id}", response_model=NoteOut)

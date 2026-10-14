@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { EditIcon } from "../components/Icons";
+import { CheckIcon, CopyIcon, EditIcon } from "../components/Icons";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -65,6 +65,7 @@ export default function ProfilePage() {
   const [form, setForm] = useState<ProfileInput | null>(null);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   if (state.status === "loading") return <Spinner label="در حال بارگذاری پروفایل…" />;
 
@@ -232,6 +233,41 @@ export default function ProfilePage() {
           حساب: <span dir="ltr">{user.username ? `@${user.username}` : user.telegram_id}</span>
         </p>
         <p>تمام داده‌ها فقط متعلق به شماست و در حساب تلگرامتان ذخیره می‌شود.</p>
+
+        {/* Share ID card — so friends can send you notes */}
+        <div className="mt-3 rounded-xl bg-emerald-600/10 p-3 dark:bg-emerald-500/10">
+          <p className="mb-2 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+            📥 شناسه شما برای دریافت جزوه
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-white px-3 py-2 text-xs font-bold dark:bg-black/30" dir="ltr">
+              {user.username ? `@${user.username}` : String(user.telegram_id)}
+            </code>
+            <button
+              type="button"
+              onClick={async () => {
+                const id = user.username ? `@${user.username}` : String(user.telegram_id);
+                try {
+                  await navigator.clipboard?.writeText(id);
+                  setCopiedId(true);
+                  getWebApp()?.HapticFeedback?.notificationOccurred("success");
+                  window.setTimeout(() => setCopiedId(false), 2000);
+                } catch {
+                  /* clipboard not available */
+                }
+              }}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition-opacity active:opacity-80"
+              title="کپی شناسه"
+            >
+              {copiedId ? <CheckIcon className="h-4 w-4" /> : <CopyIcon className="h-4 w-4" />}
+              {copiedId ? "کپی شد" : "کپی"}
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] leading-5 opacity-70">
+            این شناسه را به دوستانتان بدهید تا بتوانند جزوه برایتان بفرستند.
+          </p>
+        </div>
+
         {user.is_admin && (
           <Link
             to="/admin"
