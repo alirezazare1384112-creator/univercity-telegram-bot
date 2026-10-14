@@ -243,6 +243,18 @@ export const api = {
     ),
   sendNoteToTelegram: (id: number) =>
     request<{ sent: boolean }>(`/api/notes/${id}/send`, { method: "POST" }),
+  shareNote: (id: number, telegramId: number) => {
+    const form = new FormData();
+    form.append("telegram_id", String(telegramId));
+    return request<{ sent: boolean; recipient: string }>(
+      `/api/notes/${id}/share`,
+      { method: "POST", body: form },
+    ).then((r) => {
+      invalidateCache("/api/notes");
+      invalidateCache("/api/dashboard");
+      return r;
+    });
+  },
   noteFileToken: (id: number) => {
     const hit = noteTokens.get(id);
     if (hit && hit.expires > Date.now()) {

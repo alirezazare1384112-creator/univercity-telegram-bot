@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EditIcon, PlusIcon, TrashIcon, XIcon } from "../components/Icons";
+import { EditIcon, PlusIcon, ShareIcon, TrashIcon, XIcon } from "../components/Icons";
 import ImageViewer from "../components/ImageViewer";
 import Spinner from "../components/Spinner";
 import { ApiError, api } from "../lib/api";
@@ -55,6 +55,9 @@ export default function NotesPage() {
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef(0);
+  const [shareTarget, setShareTarget] = useState<Note | null>(null);
+  const [shareIdInput, setShareIdInput] = useState("");
+  const [sharing, setSharing] = useState(false);
 
   const load = useCallback(async () => {
     setPage({ kind: "loading" });
@@ -192,6 +195,41 @@ export default function NotesPage() {
       haptic("error");
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const openShare = (note: Note) => {
+    setShareTarget(note);
+    setShareIdInput("");
+    setBanner(null);
+  };
+
+  const submitShare = async () => {
+    if (!shareTarget) return;
+    const trimmed = shareIdInput.trim();
+    if (!trimmed) {
+      setBanner("شناسه تلگرام گیرنده را وارد کنید.");
+      return;
+    }
+    // Accept both plain digits and @username-style (rare for IDs).
+    const numericId = Number(trimmed.replace(/[^0-9]/g, ""));
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      setBanner("شناسه تلگرام باید عدد باشد.");
+      return;
+    }
+    setSharing(true);
+    try {
+      const result = await api.shareNote(shareTarget.id, numericId);
+      haptic("success");
+      flashNotice(`جزوه برای ${result.recipient} ارسال شد ✅`);
+      setShareTarget(null);
+      setShareIdInput("");
+      setBanner(null);
+    } catch (error: unknown) {
+      setBanner(errorMessage(error));
+      haptic("error");
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -448,6 +486,15 @@ export default function NotesPage() {
                 >
                   {sendingId === note.id ? "…" : "📤"}
                 </button>
+                <button
+                  type="button"
+                  title="اشتراک‌گذاری با دوست"
+                  aria-label="اشتراک‌گذاری"
+                  onClick={() => openShare(note)}
+                  className="flex items-center justify-center rounded-xl bg-emerald-600/10 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors active:opacity-80 dark:text-emerald-400"
+                >
+                  <ShareIcon className="h-4 w-4" />
+                </button>
                 {confirmId === note.id ? (
                   <>
                     <button
@@ -489,6 +536,80 @@ export default function NotesPage() {
           alt={previewNote?.title ?? "جزوه"}
           onClose={closePreview}
         />
+      )}
+
+      {shareTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4"
+          onClick={() => !sharing && setShareTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 dark:bg-neutral-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-1.5 text-base font-bold">
+                <ShareIcon className="h-5 w-5 text-emerald-600" />
+                اشتراک‌گذاری جزوه
+              </h3>
+              <button
+                type="button"
+                onClick={() => !sharing && setShareTarget(null)}
+                className="flex items-center justify-center rounded-lg bg-black/10 p-1.5 text-xs"
+                title="بستن"
+                disabled={sharing}
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mb-3 text-xs opacity-70">
+              جزوه «{shareTarget.title}» برای کدام کاربر ارسال شود؟
+            </p>
+
+            <input
+              type="text"
+              inputMode="numeric"
+              className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:bg-black/30 dark:text-white"
+              placeholder="شناسه تلگرام گیرنده (مثلاً ۱۲۳۴۵۶۷۸۹)"
+              value={shareIdInput}
+              onChange={(e) => setShareIdInput(e.target.value)}
+              disabled={sharing}
+              dir="ltr"
+            />
+            <p className="mt-2 text-[11px] leading-5 opacity-60">
+              💡 شناسه تلگرام را می‌توانید از تنظیمات تلگرام گیرنده پیدا کنید.
+              گیرنده باید حداقل یک‌بار ربات را باز کرده باشد.
+            </p>
+
+            {banner && (
+              <p className="mt-3 rounded-xl bg-red-600/10 px-3 py-2 text-center text-xs text-red-700 dark:text-red-400">
+                {banner}
+              </p>
+            )}
+
+            <div className="mt-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void submitShare()}
+                disabled={sharing}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition-opacity active:opacity-80 disabled:opacity-60"
+              >
+                <ShareIcon className="h-4 w-4" />
+                {sharing ? "در حال ارسال…" : "ارسال"}
+              </button>
+              <button
+                type="button"
+                onClick={() => !sharing && setShareTarget(null)}
+                disabled={sharing}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black/10 px-4 py-3 text-sm font-bold transition-colors active:opacity-80 disabled:opacity-60 dark:bg-white/10"
+              >
+                <XIcon className="h-4 w-4" />
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
