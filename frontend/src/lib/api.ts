@@ -243,9 +243,9 @@ export const api = {
     ),
   sendNoteToTelegram: (id: number) =>
     request<{ sent: boolean }>(`/api/notes/${id}/send`, { method: "POST" }),
-  shareNote: (id: number, telegramId: number) => {
+  shareNote: (id: number, recipient: string) => {
     const form = new FormData();
-    form.append("telegram_id", String(telegramId));
+    form.append("recipient", recipient);
     return request<{ sent: boolean; recipient: string }>(
       `/api/notes/${id}/share`,
       { method: "POST", body: form },
