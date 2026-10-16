@@ -105,6 +105,23 @@ def register_handlers(app: Application) -> None:
     for conversation in conversations:
         app.add_handler(conversation, group=0)
 
+    # --- standalone file catcher (group 0, after conversations) ------
+    # On serverless (Vercel), ConversationHandler entry points can be
+    # unreliable because persistence round-trips through the database on
+    # every request. This standalone handler catches any photo/document
+    # that falls through the conversations and saves it as a note — the
+    # most common user action ("forward a file to the bot") should never
+    # fail silently.
+    from app.bot.handlers.notes import save_forwarded_file
+
+    app.add_handler(
+        MessageHandler(
+            (filters.PHOTO | filters.Document.ALL) & ~filters.COMMAND,
+            save_forwarded_file,
+        ),
+        group=0,
+    )
+
     # --- fallback (keep last) -----------------------------------------
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, start.fallback_text),
