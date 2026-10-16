@@ -484,17 +484,27 @@ async def on_file_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def on_free_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """A photo/document sent outside the wizard: auto-start the wizard.
+    """A photo/document sent/forwarded outside the wizard: save immediately.
 
-    Previously this just showed a "go to the menu" message, which made
-    users send the file, get told to do something else, then have to
-    re-send the file inside the wizard — losing the original file_id
-    and forcing a re-upload.
+    When a student forwards a file from a friend's chat (or sends any
+    photo/document directly), we save it as a note right away using:
+    - the message caption as the title (if present)
+    - the original filename as the title (if no caption)
+    - "جزوه" as a fallback title
 
-    Now we capture the file immediately and start the wizard with the
-    file already saved. The user only needs to type the title and pick
-    a course.
+    No wizard, no extra steps. The user can edit the title/course later
+    from the Mini App or the bot menu.
+
+    If the user already has the notes wizard open (e.g. they pressed
+    "➕ جزوه جدید" and then sent a file), we route to on_file_received
+    instead so the wizard flow is not broken.
     """
+    # If the wizard is active, let on_file_received handle it (it runs
+    # inside the WIZARD state and will match first).
+    wizard = context.user_data.get("note_wizard")
+    if wizard is not None:
+        return  # Let the WIZARD state handler take over
+
     user_id = await current_user_id(update, context)
     if user_id is None:
         return ConversationHandler.END
@@ -505,25 +515,42 @@ async def on_free_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     file_type, file_id, file_unique_id, file_name = extracted
-    # Pre-fill the wizard with the captured file and jump straight to
-    # the title field. ``_advance`` then walks title → course → description.
-    context.user_data["note_wizard"] = {
-        "mode": "add",
-        "field": "title",
-        "data": {
-            "file": (file_type, file_id, file_unique_id, file_name),
-        },
-    }
-    # Friendly message so the user knows the file was captured.
+
+    # Derive a title: caption > filename > "جزوه"
+    caption = (message.caption or "").strip() if message else ""
+    title = caption[:128] if caption else (file_name or "جزوه")[:128]
+
+    # Save the note immediately.
+    async with get_session() as session:
+        note = await NoteRepository(session).create(
+            user_id=user_id,
+            title=title,
+            description=None,
+            course_id=None,
+            file_type=file_type,
+            file_id=file_id,
+            file_unique_id=file_unique_id,
+            file_name=file_name,
+        )
+        note_id = note.id
+
     file_label = file_name or ("عکس" if file_type == NOTE_PHOTO else "سند")
     await answer(
         update,
         context,
-        f"✅ فایل «{file_label}» ذخیره شد.\n"
-        "حالا عنوان جزوه را بنویس:",
-        reply_markup=inline_buttons([[(CANCEL, "note:cancel")]]),
+        f"✅ جزوه با موفقیت ذخیره شد!\n\n"
+        f"📌 عنوان: {title}\n"
+        f"📎 فایل: {file_label}\n\n"
+        f"می‌توانی عنوان و درس آن را بعداً از منو ویرایش کنی.",
+        reply_markup=inline_buttons(
+            [
+                [("📖 مشاهده جزوه", f"note:open:{note_id}")],
+                [("📚 همه جزوه‌ها", "note:list")],
+                [("🔙 منوی اصلی", "note:exit")],
+            ]
+        ),
     )
-    return NoteState.WIZARD
+    return ConversationHandler.END
 
 
 async def on_course_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):

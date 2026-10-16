@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from telegram.ext import ConversationHandler
 
 from app.bot.handlers.notes import (
     build_conversation,
@@ -286,27 +287,23 @@ async def test_text_is_rejected_while_waiting_for_the_file(db):
 
 
 async def test_file_outside_the_wizard_auto_starts(db):
-    """A file sent outside the wizard is captured and the wizard starts.
+    """A file sent outside the wizard is saved immediately as a note.
 
-    Previously the bot just told the user to "go to the menu", which
-    forced a re-upload. Now the file is captured immediately and the
-    wizard jumps to the title field with the file already saved.
+    The note title is derived from the caption (if present), the
+    filename, or falls back to "جزوه". No wizard is started — the
+    user can edit the title later from the menu.
     """
     context = await _register(7008)
 
     state = await on_free_file(make_photo_update(user_id=7008), context)
 
-    # The wizard should now be active (waiting for the title).
-    assert state == NoteState.WIZARD
+    # The note should be saved immediately (no wizard).
+    assert state == ConversationHandler.END
     assert any("ذخیره شد" in text for text in context.sent_texts)
-    # The file should be captured in the wizard data, not yet in the DB
-    # (the note is only created after the title is typed).
-    wizard = context.user_data.get("note_wizard")
-    assert wizard is not None
-    assert "file" in wizard.get("data", {})
     user_id = context.user_data["user_id"]
     async with get_session() as session:
-        assert await NoteRepository(session).count(user_id) == 0
+        count = await NoteRepository(session).count(user_id)
+    assert count == 1
 
 
 # --- edit / delete ------------------------------------------------------
