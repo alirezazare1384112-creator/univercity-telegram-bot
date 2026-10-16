@@ -505,6 +505,24 @@ async def on_free_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if wizard is not None:
         return  # Let the WIZARD state handler take over
 
+    return await _save_file_as_note(update, context)
+
+
+async def save_forwarded_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Standalone handler: save any forwarded/sent file as a note.
+
+    This is registered in group 0 *after* the conversation handlers,
+    so it only fires when no conversation claimed the update. On
+    serverless (Vercel), ConversationHandler entry points can be
+    unreliable due to persistence round-trips — this standalone handler
+    is the safety net that guarantees "forward a file → saved as note"
+    always works.
+    """
+    return await _save_file_as_note(update, context)
+
+
+async def _save_file_as_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shared implementation: extract file info, derive a title, save."""
     user_id = await current_user_id(update, context)
     if user_id is None:
         return ConversationHandler.END
