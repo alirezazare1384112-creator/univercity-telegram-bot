@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from telegram import Update
@@ -630,3 +631,63 @@ def build_conversation() -> ConversationHandler:
         persistent=False,
         allow_reentry=True,
     )
+
+
+# --- standalone stop-nagging handler --------------------------------------
+async def on_stop_nagging(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the '🛑 توقف یادآوری' button on reminder messages.
+
+    Sets the reminder's is_active=False and deletes any pending NAG
+    notifications so the hourly repeats stop immediately. The button is
+    on the message itself (not inside a conversation), so this handler
+    is registered as a standalone CallbackQueryHandler in group 0.
+    """
+    query = update.callback_query
+    if query is not None:
+        await query.answer()
+
+    user_id = await current_user_id(update, context)
+    if user_id is None:
+        return
+
+    reminder_id_str = (query.data or "").split(":")[-1]
+    try:
+        reminder_id = int(reminder_id_str)
+    except ValueError:
+        return
+
+    from sqlalchemy import delete, select
+
+    from app.database.models import Reminder, ReminderNotification
+
+    async with get_session() as session:
+        reminder = (
+            await session.execute(
+                select(Reminder).where(
+                    Reminder.id == reminder_id, Reminder.user_id == user_id
+                )
+            )
+        ).scalar_one_or_none()
+
+        if reminder is None:
+            if query is not None:
+                await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        reminder.is_active = False
+        # Delete any pending NAG notifications for this reminder
+        await session.execute(
+            delete(ReminderNotification).where(
+                ReminderNotification.reminder_id == reminder_id,
+                ReminderNotification.is_sent.is_(False),
+                ReminderNotification.alert_offset == "NAG",
+            )
+        )
+
+    if query is not None:
+        with contextlib.suppress(Exception):  # message may be too old to edit
+            await query.edit_message_text(
+                f"✅ یادآوری «{reminder.title}» متوقف شد.\n"
+                f"دیگر پیام تکراری دریافت نخواهید کرد.",
+                reply_markup=None,
+            )

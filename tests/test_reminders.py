@@ -349,7 +349,7 @@ async def test_due_alert_is_delivered_and_logged(db):
     user, reminder = await _seed(6012, when=past)
     sent: list[tuple[int, str]] = []
 
-    async def send_message(*, chat_id: int, text: str) -> None:
+    async def send_message(*, chat_id: int, text: str, **_kwargs) -> None:
         sent.append((chat_id, text))
 
     counters = await process_due_notifications(send_message, TZ)
@@ -412,7 +412,7 @@ async def test_repeating_reminder_advances_and_gets_new_alerts(db):
     user, reminder = await _seed(6016, when=now - timedelta(days=2), repeat=REPEAT_DAILY)
     sent: list[str] = []
 
-    async def send_message(*, chat_id: int, text: str) -> None:
+    async def send_message(*, chat_id: int, text: str, **_kwargs) -> None:
         sent.append(text)
 
     counters = await process_due_notifications(send_message, TZ)
