@@ -97,7 +97,7 @@ class ReminderNotification(TimestampMixin, IdMixin, Base):
     __tablename__ = "reminder_notifications"
     __table_args__ = (
         CheckConstraint(
-            "alert_offset IN ('AT_TIME','HOURS_1','DAYS_1')",
+            "alert_offset IN ('AT_TIME','HOURS_1','DAYS_1','NAG')",
             name="ck_reminder_notifications_alert_offset",
         ),
         UniqueConstraint(

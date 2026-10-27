@@ -17,6 +17,7 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ConversationHandler,
     MessageHandler,
@@ -119,6 +120,18 @@ def register_handlers(app: Application) -> None:
             (filters.PHOTO | filters.Document.ALL) & ~filters.COMMAND,
             save_forwarded_file,
         ),
+        group=0,
+    )
+
+    # --- reminder stop button (standalone callback) ------------------
+    # When a reminder fires, the message includes a "🛑 توقف یادآوری"
+    # button with callback_data "rmnd_stop:{id}". This handler catches
+    # that callback, sets the reminder's is_active=False, and deletes
+    # any pending nag notifications — so the hourly repeats stop.
+    from app.bot.handlers.reminders import on_stop_nagging
+
+    app.add_handler(
+        CallbackQueryHandler(on_stop_nagging, pattern=r"^rmnd_stop:\d+$"),
         group=0,
     )
 

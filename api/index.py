@@ -125,13 +125,31 @@ async def _ensure_schema() -> None:
                 continue  # table created by create_all; column already there
             if column in existing[table]:
                 continue  # already migrated
-            # SQLite needs batch mode for ALTER; PostgreSQL accepts plain ALTER.
-            # ``render_as_batch`` is set in alembic env; here we just use a
-            # raw ALTER which both dialects accept for ADD COLUMN.
             await conn.execute(
                 text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
             )
             logger.info("Light migration: added %s.%s", table, column)
+
+        # Update the reminder_notifications CHECK constraint to allow 'NAG'.
+        # PostgreSQL syntax; silently fails on SQLite (which uses batch mode
+        # for constraint changes — but the constraint is not enforced on
+        # existing rows in SQLite anyway, so this is fine).
+        try:
+            await conn.execute(
+                text(
+                    "ALTER TABLE reminder_notifications "
+                    "DROP CONSTRAINT IF EXISTS ck_reminder_notifications_alert_offset"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE reminder_notifications "
+                    "ADD CONSTRAINT ck_reminder_notifications_alert_offset "
+                    "CHECK (alert_offset IN ('AT_TIME','HOURS_1','DAYS_1','NAG'))"
+                )
+            )
+        except Exception:  # noqa: BLE001 - SQLite or already up to date
+            pass
 
         table_names = await conn.run_sync(
             lambda sync_conn: set(inspect(sync_conn).get_table_names())

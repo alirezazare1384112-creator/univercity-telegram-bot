@@ -79,11 +79,24 @@ class DueAlert:
 
 def build_alert_message(alert: DueAlert, timezone_name: str) -> str:
     prefix = ALERT_PREFIX.get(alert.alert_offset, "⏰ یادآوری:")
+    # Nag notifications (hourly repeats) get a slightly different prefix
+    # so the user knows this is a repeat, not the original alert.
+    if alert.alert_offset == "NAG":
+        prefix = "🔄 یادآوری تکراری (هر ساعت):"
     lines = [f"{prefix} {alert.title}"]
     lines.append(f"🕒 {format_jalali(alert.reminder_datetime, timezone_name)}")
     if alert.description:
         lines.append(f"📝 {alert.description}")
     return "\n".join(lines)
+
+
+def _stop_keyboard(reminder_id: int):
+    """Inline keyboard with a 'stop nagging' button."""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🛑 توقف یادآوری", callback_data=f"rmnd_stop:{reminder_id}")]]
+    )
 
 
 async def sync_notifications(
@@ -217,6 +230,7 @@ async def process_due_notifications(
                 await send_message(
                     chat_id=alert.telegram_id,
                     text=build_alert_message(alert, timezone_name),
+                    reply_markup=_stop_keyboard(alert.reminder_id),
                 )
                 counters["sent"] += 1
             except Exception as exc:  # noqa: BLE001 - Telegram errors are expected here
@@ -234,7 +248,11 @@ async def process_due_notifications(
     await asyncio.gather(*(_send_one(a) for a in due))
 
     # Batch write-back: one transaction for all mark_sent + notification logs.
+    # Also: schedule a nag notification for +1 hour so the user is reminded
+    # again until they press the "stop" button.
     now = utcnow_naive()
+    from datetime import timedelta
+
     async with get_session() as session:
         notif_repo = ReminderNotificationRepository(session)
         log_repo = NotificationLogRepository(session)
@@ -247,6 +265,18 @@ async def process_due_notifications(
                 status=status,
                 error_message=error,
             )
+            # If the send succeeded, schedule a nag for +1 hour.
+            # The nag fires repeatedly until the user presses "stop"
+            # (which sets is_active=False on the reminder).
+            if status == STATUS_SENT:
+                try:
+                    await notif_repo.create(
+                        reminder_id=alert.reminder_id,
+                        alert_offset="NAG",
+                        fire_datetime=now + timedelta(hours=1),
+                    )
+                except Exception:  # noqa: BLE001 - unique constraint may fire
+                    logger.debug("Nag already scheduled for reminder %s", alert.reminder_id)
 
     async with get_session() as session:
         counters["advanced"] = await advance_repeating(session)
