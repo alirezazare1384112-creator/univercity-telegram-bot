@@ -4,10 +4,41 @@ from __future__ import annotations
 
 from datetime import date, time
 
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Index, Text, Time
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, ForeignKey, Index, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.models.base import Base, IdMixin, TimestampMixin, varchar
+
+# Event types — used by the calendar for colour coding and filtering
+EVENT_EXAM = "EXAM"
+EVENT_QUIZ = "QUIZ"
+EVENT_ASSIGNMENT = "ASSIGNMENT"
+EVENT_PROJECT = "PROJECT"
+EVENT_PRESENTATION = "PRESENTATION"
+EVENT_CLASS = "CLASS"
+EVENT_TASK = "TASK"
+EVENT_OTHER = "OTHER"
+EVENT_TYPES: tuple[str, ...] = (
+    EVENT_EXAM,
+    EVENT_QUIZ,
+    EVENT_ASSIGNMENT,
+    EVENT_PROJECT,
+    EVENT_PRESENTATION,
+    EVENT_CLASS,
+    EVENT_TASK,
+    EVENT_OTHER,
+)
+
+EVENT_LABELS: dict[str, str] = {
+    EVENT_EXAM: "امتحان",
+    EVENT_QUIZ: "کوییز",
+    EVENT_ASSIGNMENT: "تکلیف",
+    EVENT_PROJECT: "پروژه",
+    EVENT_PRESENTATION: "ارائه",
+    EVENT_CLASS: "کلاس",
+    EVENT_TASK: "کار شخصی",
+    EVENT_OTHER: "سایر",
+}
 
 
 class CalendarEvent(TimestampMixin, IdMixin, Base):
@@ -21,7 +52,14 @@ class CalendarEvent(TimestampMixin, IdMixin, Base):
     """
 
     __tablename__ = "calendar_events"
-    __table_args__ = (Index("ix_calendar_events_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_calendar_events_user_id", "user_id"),
+        CheckConstraint(
+            "event_type IN ('EXAM','QUIZ','ASSIGNMENT','PROJECT',"
+            "'PRESENTATION','CLASS','TASK','OTHER')",
+            name="ck_calendar_events_event_type",
+        ),
+    )
 
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -31,8 +69,17 @@ class CalendarEvent(TimestampMixin, IdMixin, Base):
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     description: Mapped[str | None] = mapped_column(Text)
     is_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Event type for colour coding (EXAM, QUIZ, ASSIGNMENT, etc.)
+    event_type: Mapped[str] = mapped_column(
+        varchar(16), nullable=False, default=EVENT_OTHER
+    )
+    # Optional link to a course (NULL for personal tasks)
+    course_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("courses.id", ondelete="SET NULL"), nullable=True
+    )
 
     user = relationship("User", lazy="raise", passive_deletes=True)
+    course = relationship("Course", lazy="raise", passive_deletes=True)
 
     @property
     def is_all_day(self) -> bool:  # pragma: no cover - tiny helper for the UI
