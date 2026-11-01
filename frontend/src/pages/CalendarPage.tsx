@@ -70,8 +70,8 @@ function fa(n: number): string {
 function firstWeekdayOffset(jy: number, jm: number): number {
   const iso = jalaliToIso({ jy, jm, jd: 1 });
   const [gy, gm, gd] = iso.split("-").map(Number);
-  const jsDay = new Date(gy, gm - 1, gd).getDay(); // 0=Sun ... 6=Sat
-  return (jsDay + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
+  const jsDay = new Date(gy, gm - 1, gd).getDay();
+  return (jsDay + 1) % 7;
 }
 
 /** Weekday index where 0 = Saturday ... 6 = Friday. */
@@ -97,8 +97,17 @@ function countdownLabel(eventDate: string): string {
   const d = daysUntil(eventDate);
   if (d === 0) return "امروز";
   if (d === 1) return "فردا";
-  if (d > 1) return `${fa(d)} روز باقی‌مانده`;
+  if (d > 1) return `${fa(d)} روز`;
   return "گذشته";
+}
+
+function countdownUrgency(eventDate: string, isDone: boolean): "urgent" | "soon" | "normal" | "past" {
+  if (isDone) return "normal";
+  const d = daysUntil(eventDate);
+  if (d < 0) return "past";
+  if (d <= 2) return "urgent";
+  if (d <= 7) return "soon";
+  return "normal";
 }
 
 function toInput(e: CalendarEvent): CalendarEventInput {
@@ -230,7 +239,7 @@ export default function CalendarPage() {
     setSelectedIso(iso);
   };
 
-  // --- derived data (all hooks run before any early return) ---
+  // --- derived data ---
   const allEvents = page.kind === "ready" ? page.events : [];
   const todayStr = todayIso();
 
@@ -265,38 +274,40 @@ export default function CalendarPage() {
   );
   const upcomingEvents = useMemo(
     () => filteredEvents
-      .filter((e) => e.event_date !== selectedIso && daysUntil(e.event_date) >= 0)
+      .filter((e) => e.event_date !== selectedIso && daysUntil(e.event_date) >= 0 && !e.is_done)
       .sort(byDateTime)
       .slice(0, 10),
     [filteredEvents, selectedIso],
   );
   const summary = useMemo(() => {
-    let exams = 0, presentations = 0, remaining = 0;
+    let exams = 0, presentations = 0, remaining = 0, overdue = 0;
     for (const e of allEvents) {
       if (e.is_done) continue;
       remaining++;
-      if (e.event_date >= todayStr) {
-        if (e.event_type === "EXAM") exams++;
+      if (e.event_date < todayStr) {
+        overdue++;
+      } else if (e.event_date >= todayStr) {
+        if (e.event_type === "EXAM" || e.event_type === "QUIZ") exams++;
         else if (e.event_type === "PRESENTATION") presentations++;
       }
     }
-    return { exams, presentations, remaining };
+    return { exams, presentations, remaining, overdue };
   }, [allEvents, todayStr]);
 
   if (page.kind === "loading") return <Spinner label="در حال بارگذاری تقویم…" />;
   if (page.kind === "error") {
     return (
-      <section className="rounded-2xl bg-black/5 p-6 text-center">
+      <section className="rounded-2xl bg-black/5 p-6 text-center dark:bg-white/5">
         <p className="text-sm">{page.message}</p>
         <button type="button" onClick={() => void load()}
-          className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white active:opacity-80">
+          className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-opacity active:opacity-80">
           تلاش دوباره
         </button>
       </section>
     );
   }
 
-  const field = "w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm dark:bg-black/20";
+  const field = "w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:bg-black/30 dark:text-white dark:border-white/10";
   const formJ: JalaliDate = form?.event_date ? isoToJalali(form.event_date) : todayJalali();
   const nowJ = todayJalali();
   const years: number[] = [];
@@ -306,90 +317,158 @@ export default function CalendarPage() {
 
   return (
     <section className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-bold">تقویم من</h1>
-          <p className="text-xs opacity-60">{J_MONTHS[view.jm - 1]} {fa(view.jy)}</p>
+      {/* ── A. Header (gradient hero) ── */}
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 p-5 text-white shadow-lg shadow-purple-500/20">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-black">تقویم من</h1>
+            <p className="mt-0.5 text-xs opacity-80">{J_MONTHS[view.jm - 1]} {fa(view.jy)}</p>
+          </div>
+          <button type="button" onClick={goToday}
+            className="rounded-xl bg-white/15 px-3 py-2 text-xs font-bold backdrop-blur-sm transition-colors active:bg-white/25">
+            امروز
+          </button>
         </div>
-        <button type="button" onClick={openCreate} className="flex items-center gap-1 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white active:opacity-80">
-          <PlusIcon className="h-4 w-4" />
-          افزودن
-        </button>
+      </section>
+
+      {/* ── B. Summary cards (compact) ── */}
+      <div className="grid grid-cols-4 gap-2">
+        <SummaryCard label="امتحان" value={summary.exams} icon="📝" accent="bg-red-500/15" />
+        <SummaryCard label="ارائه" value={summary.presentations} icon="🎤" accent="bg-blue-500/15" />
+        <SummaryCard label="باقی" value={summary.remaining} icon="📋" accent="bg-orange-500/15" />
+        <SummaryCard label="عقب‌افتاده" value={summary.overdue} icon="⏰" accent="bg-rose-500/15" />
       </div>
 
-      {/* Month navigation */}
+      {/* ── Month navigation ── */}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-black/5 p-2 dark:bg-white/5">
-        <button type="button" onClick={goPrev} aria-label="ماه قبل" className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/5 text-xl active:opacity-70 dark:bg-white/10">›</button>
-        <div className="flex flex-col items-center">
-          <p className="text-sm font-bold">{J_MONTHS[view.jm - 1]} {fa(view.jy)}</p>
-          <button type="button" onClick={goToday} className="text-[11px] font-bold text-blue-600 active:opacity-70 dark:text-blue-400">امروز</button>
-        </div>
-        <button type="button" onClick={goNext} aria-label="ماه بعد" className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/5 text-xl active:opacity-70 dark:bg-white/10">‹</button>
+        <button type="button" onClick={goPrev} aria-label="ماه قبل"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/5 text-xl transition-colors active:bg-black/10 dark:bg-white/10 dark:active:bg-white/20">›</button>
+        <p className="text-sm font-bold">{J_MONTHS[view.jm - 1]} {fa(view.jy)}</p>
+        <button type="button" onClick={goNext} aria-label="ماه بعد"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/5 text-xl transition-colors active:bg-black/10 dark:bg-white/10 dark:active:bg-white/20">‹</button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-2">
-        <SummaryCard label="امتحانات پیش‌رو" value={summary.exams} dot="bg-red-500" />
-        <SummaryCard label="ارائه‌های پیش‌رو" value={summary.presentations} dot="bg-blue-500" />
-        <SummaryCard label="کارهای باقی‌مانده" value={summary.remaining} dot="bg-orange-500" />
-      </div>
-
-      {/* Filter pills */}
+      {/* ── D. Filters ── */}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
-          <button key={f.key} type="button" onClick={() => setFilter(f.key)} className={`rounded-full px-3 py-1.5 text-xs font-bold active:opacity-80 ${filter === f.key ? "bg-blue-600 text-white" : "bg-black/10 dark:bg-white/10"}`}>
+          <button key={f.key} type="button" onClick={() => setFilter(f.key)}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
+              filter === f.key
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-black/10 text-current dark:bg-white/10"
+            }`}>
             {f.label}
           </button>
         ))}
       </div>
 
-      {/* Add / edit form */}
+      {/* ── C. Calendar grid ── */}
+      <div className="rounded-2xl bg-black/5 p-3 dark:bg-white/5">
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {WEEKDAYS.map((w) => (
+            <div key={w} className="py-1 text-[11px] font-bold opacity-40">{w}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {calendarCells.map((cell, idx) => {
+            if (!cell) return <div key={`e-${idx}`} />;
+            const dayEvents = eventsByDate.get(cell.iso) ?? [];
+            const isToday = cell.iso === todayStr;
+            const isSelected = cell.iso === selectedIso;
+            const hasUndone = dayEvents.some((e) => !e.is_done);
+            const dots = dayEvents.slice(0, 4);
+            const extra = dayEvents.length - 4;
+            return (
+              <button key={cell.iso} type="button" onClick={() => setSelectedIso(cell.iso)}
+                className={`relative flex aspect-square flex-col items-center justify-start gap-0.5 rounded-xl p-1 text-xs transition-all active:scale-90 ${
+                  isSelected
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/30"
+                    : isToday
+                      ? "bg-blue-600/10 font-bold text-blue-600 dark:bg-blue-500/15 dark:text-blue-400"
+                      : dayEvents.length > 0
+                        ? "bg-black/5 dark:bg-white/5"
+                        : "text-current"
+                }`}>
+                <span className={`leading-none ${isToday && !isSelected ? "" : ""}`}>{fa(cell.day)}</span>
+                {dayEvents.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-center gap-0.5">
+                    {dots.map((e) => (
+                      <span key={e.id} className={`h-1.5 w-1.5 rounded-full ${
+                        isSelected ? "bg-white/80" : e.is_done ? `${EVENT_TYPE_COLORS[e.event_type].dot} opacity-40` : EVENT_TYPE_COLORS[e.event_type].dot
+                      }`} />
+                    ))}
+                    {extra > 0 && (
+                      <span className={`text-[8px] font-bold leading-none ${isSelected ? "opacity-90" : "opacity-60"}`}>+{fa(extra)}</span>
+                    )}
+                  </div>
+                )}
+                {hasUndone && cell.iso < todayStr && !isSelected && (
+                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-rose-500" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Add / edit form ── */}
       {form && (
         <div className="flex flex-col gap-3 rounded-2xl bg-black/5 p-4 dark:bg-white/5">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold">{form.id === null ? "رویداد جدید" : "ویرایش رویداد"}</h2>
-            <button type="button" onClick={() => { setForm(null); setBanner(null); }} aria-label="بستن" className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/10 active:opacity-70 dark:bg-white/10">
+            <h2 className="text-sm font-bold">{form.id === null ? "➕ رویداد جدید" : "✏️ ویرایش رویداد"}</h2>
+            <button type="button" onClick={() => { setForm(null); setBanner(null); }} aria-label="بستن"
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/10 transition-colors active:opacity-70 dark:bg-white/10">
               <XIcon className="h-4 w-4" />
             </button>
           </div>
 
-          <input className={field} placeholder="عنوان *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          <input className={field} placeholder="عنوان *"
+            value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
 
           <div className="grid grid-cols-2 gap-2">
-            <select className={field} value={form.event_type} aria-label="نوع رویداد" onChange={(e) => setForm({ ...form, event_type: e.target.value as EventType })}>
+            <select className={field} value={form.event_type} aria-label="نوع رویداد"
+              onChange={(e) => setForm({ ...form, event_type: e.target.value as EventType })}>
               {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
             </select>
-            <input type="time" className={field} value={form.event_time} aria-label="ساعت" onChange={(e) => setForm({ ...form, event_time: e.target.value })} />
+            <input type="time" className={field} value={form.event_time} aria-label="ساعت"
+              onChange={(e) => setForm({ ...form, event_time: e.target.value })} />
           </div>
 
           <div className="grid grid-cols-3 gap-2">
-            <select className={field} value={formJ.jy} aria-label="سال" onChange={(e) => setDatePart("jy", Number(e.target.value))}>
+            <select className={field} value={formJ.jy} aria-label="سال"
+              onChange={(e) => setDatePart("jy", Number(e.target.value))}>
               {years.map((y) => <option key={y} value={y}>{fa(y)}</option>)}
             </select>
-            <select className={field} value={formJ.jm} aria-label="ماه" onChange={(e) => setDatePart("jm", Number(e.target.value))}>
+            <select className={field} value={formJ.jm} aria-label="ماه"
+              onChange={(e) => setDatePart("jm", Number(e.target.value))}>
               {J_MONTHS.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
             </select>
-            <select className={field} value={formJ.jd} aria-label="روز" onChange={(e) => setDatePart("jd", Number(e.target.value))}>
+            <select className={field} value={formJ.jd} aria-label="روز"
+              onChange={(e) => setDatePart("jd", Number(e.target.value))}>
               {Array.from({ length: daysInMonth(formJ.jy, formJ.jm) }, (_, i) => i + 1).map((d) => (
                 <option key={d} value={d}>{fa(d)}</option>
               ))}
             </select>
           </div>
 
-          <select className={field} value={form.course_id} aria-label="درس" onChange={(e) => setForm({ ...form, course_id: e.target.value })}>
+          <select className={field} value={form.course_id} aria-label="درس"
+            onChange={(e) => setForm({ ...form, course_id: e.target.value })}>
             <option value="">بدون درس</option>
             {page.courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <textarea className={`${field} min-h-16`} placeholder="توضیح (اختیاری)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <textarea className={`${field} min-h-16`} placeholder="توضیح (اختیاری)"
+            value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
 
           <div className="flex gap-3">
-            <button type="button" onClick={() => void save()} disabled={saving} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white active:opacity-80 disabled:opacity-60">
+            <button type="button" onClick={() => void save()} disabled={saving}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity active:opacity-80 disabled:opacity-60">
               <CheckIcon className="h-4 w-4" />
               {saving ? "در حال ذخیره…" : "ذخیره"}
             </button>
-            <button type="button" onClick={() => { setForm(null); setBanner(null); }} className="flex-1 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold active:opacity-80 dark:bg-white/10">
+            <button type="button" onClick={() => { setForm(null); setBanner(null); }}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-black/10 px-4 py-2.5 text-sm font-bold transition-colors active:opacity-80 dark:bg-white/10">
+              <XIcon className="h-4 w-4" />
               انصراف
             </button>
           </div>
@@ -400,98 +479,89 @@ export default function CalendarPage() {
         <p className="rounded-xl bg-red-600/10 px-3 py-2 text-center text-xs text-red-700 dark:text-red-400">{banner}</p>
       )}
 
-      {/* Calendar grid */}
-      <div className="rounded-2xl bg-black/5 p-3 dark:bg-white/5">
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {WEEKDAYS.map((w) => (
-            <div key={w} className="py-1 text-[11px] font-bold opacity-50">{w}</div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {calendarCells.map((cell, idx) => {
-            if (!cell) return <div key={`e-${idx}`} className="aspect-square" />;
-            const dayEvents = eventsByDate.get(cell.iso) ?? [];
-            const isToday = cell.iso === todayStr;
-            const isSelected = cell.iso === selectedIso;
-            const dots = dayEvents.slice(0, 3);
-            const extra = dayEvents.length - 3;
-            return (
-              <button key={cell.iso} type="button" onClick={() => setSelectedIso(cell.iso)}
-                className={`flex aspect-square flex-col items-center justify-start gap-0.5 overflow-hidden rounded-xl p-1 text-xs transition-transform active:scale-95 ${
-                  isSelected ? "bg-blue-600 text-white"
-                    : isToday ? "bg-black/10 font-bold text-blue-600 dark:bg-white/10 dark:text-blue-400"
-                    : "text-current"}`}>
-                <span className="leading-none">{fa(cell.day)}</span>
-                {dayEvents.length > 0 && (
-                  <div className="flex flex-wrap items-center justify-center gap-0.5">
-                    {dots.map((e) => (
-                      <span key={e.id} className={`h-1.5 w-1.5 rounded-full ${EVENT_TYPE_COLORS[e.event_type].dot}`} />
-                    ))}
-                    {extra > 0 && <span className="text-[8px] font-bold leading-none opacity-80">+{fa(extra)}</span>}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Selected day events */}
+      {/* ── D. Selected day events ── */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex flex-wrap items-center gap-2 text-sm font-bold">
-            <span>رویدادهای {selectedLabel}</span>
+            <span>{selectedLabel}</span>
             {selectedIso === todayStr && (
               <span className="rounded-full bg-blue-600/10 px-2 py-0.5 text-[10px] text-blue-700 dark:text-blue-400">امروز</span>
             )}
+            {selectedDayEvents.length > 0 && (
+              <span className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] dark:bg-white/10">{fa(selectedDayEvents.length)} رویداد</span>
+            )}
           </h2>
-          <button type="button" onClick={openCreate} className="flex items-center gap-1 rounded-lg bg-black/10 px-2.5 py-1 text-[11px] font-bold active:opacity-70 dark:bg-white/10">
+          <button type="button" onClick={openCreate}
+            className="flex items-center gap-1 rounded-lg bg-black/10 px-2.5 py-1 text-[11px] font-bold transition-colors active:opacity-70 dark:bg-white/10">
             <PlusIcon className="h-3.5 w-3.5" />
             این روز
           </button>
         </div>
 
         {selectedDayEvents.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-2xl bg-black/5 p-6 text-center dark:bg-white/5">
-            <span className="text-3xl">🗓️</span>
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-gradient-to-br from-violet-500/5 to-indigo-500/5 p-8 text-center dark:from-violet-500/10 dark:to-indigo-500/10">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/10 text-3xl">🗓️</div>
             <p className="text-sm opacity-70">رویدادی برای این روز ثبت نشده است.</p>
-            <button type="button" onClick={openCreate} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white active:opacity-80">افزودن رویداد</button>
+            <button type="button" onClick={openCreate}
+              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-opacity active:opacity-80">
+              <PlusIcon className="h-4 w-4" />
+              افزودن رویداد
+            </button>
           </div>
         ) : (
           <ul className="flex flex-col gap-2">
             {selectedDayEvents.map((event) => {
               const colors = EVENT_TYPE_COLORS[event.event_type];
               const confirming = confirmId === event.id;
+              const isOverdue = !event.is_done && event.event_date < todayStr;
               return (
-                <li key={event.id} className={`relative overflow-hidden rounded-2xl ${colors.bg}`}>
+                <li key={event.id} className={`relative overflow-hidden rounded-2xl ${colors.bg} ${event.is_done ? "opacity-60" : ""}`}>
                   <span className={`absolute inset-y-0 right-0 w-1 ${colors.dot}`} aria-hidden="true" />
                   <div className="p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className={`truncate font-bold ${event.is_done ? "line-through opacity-50" : ""}`}>{event.title}</p>
+                        <p className={`truncate font-bold ${event.is_done ? "line-through" : ""}`}>{event.title}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] opacity-70">
                           {event.event_time && <span>🕒 {event.event_time}</span>}
                           {event.course_name && <span>· {event.course_name}</span>}
+                          {isOverdue && <span className="font-bold text-rose-600 dark:text-rose-400">· عقب‌افتاده</span>}
                         </div>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${colors.text} ${colors.bg}`}>{EVENT_TYPE_LABELS[event.event_type]}</span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${colors.text} ${colors.bg}`}>
+                        {EVENT_TYPE_LABELS[event.event_type]}
+                      </span>
                     </div>
                     {event.description && <p className="mt-2 whitespace-pre-wrap text-xs opacity-80">{event.description}</p>}
                     <div className="mt-3 flex gap-2">
-                      <button type="button" onClick={() => toggle(event)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-bold active:opacity-80 ${event.is_done ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400"}`}>
+                      <button type="button" onClick={() => toggle(event)}
+                        className={`flex flex-1 items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-bold transition-opacity active:opacity-80 ${
+                          event.is_done
+                            ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                            : "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400"
+                        }`}>
                         <CheckIcon className="h-3.5 w-3.5" />
                         {event.is_done ? "برگشت به انتظار" : "انجام شد"}
                       </button>
-                      <button type="button" onClick={() => openEdit(event)} aria-label="ویرایش" className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-blue-700 active:opacity-80 dark:bg-white/10 dark:text-blue-400">
+                      <button type="button" onClick={() => openEdit(event)} aria-label="ویرایش"
+                        className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 text-blue-700 transition-colors active:opacity-80 dark:bg-white/10 dark:text-blue-400">
                         <EditIcon className="h-4 w-4" />
                       </button>
                       {confirming ? (
                         <>
-                          <button type="button" onClick={() => remove(event.id)} aria-label="حذف نهایی" className="flex items-center justify-center rounded-xl bg-red-600 px-3 py-2 text-white active:opacity-80"><TrashIcon className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => setConfirmId(null)} aria-label="انصراف" className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 active:opacity-80 dark:bg-white/10"><XIcon className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => remove(event.id)} aria-label="حذف نهایی"
+                            className="flex items-center justify-center rounded-xl bg-red-600 px-3 py-2 text-white transition-opacity active:opacity-80">
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                          <button type="button" onClick={() => setConfirmId(null)} aria-label="انصراف"
+                            className="flex items-center justify-center rounded-xl bg-black/10 px-3 py-2 transition-colors active:opacity-80 dark:bg-white/10">
+                            <XIcon className="h-4 w-4" />
+                          </button>
                         </>
                       ) : (
-                        <button type="button" onClick={() => setConfirmId(event.id)} aria-label="حذف" className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-red-700 active:opacity-80 dark:text-red-400"><TrashIcon className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => setConfirmId(event.id)} aria-label="حذف"
+                          className="flex items-center justify-center rounded-xl bg-red-600/10 px-3 py-2 text-red-700 transition-colors active:opacity-80 dark:text-red-400">
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -502,45 +572,57 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* Upcoming events */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-bold">رویدادهای پیش‌رو</h2>
-        {upcomingEvents.length === 0 ? (
-          <div className="rounded-2xl bg-black/5 p-4 text-center text-xs opacity-60 dark:bg-white/5">رویداد پیش‌رویی در کار نیست.</div>
-        ) : (
+      {/* ── E. Upcoming events ── */}
+      {upcomingEvents.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-bold">رویدادهای پیش‌رو</h2>
           <ul className="flex flex-col gap-2">
             {upcomingEvents.map((e) => {
               const colors = EVENT_TYPE_COLORS[e.event_type];
+              const urgency = countdownUrgency(e.event_date, e.is_done);
+              const urgencyClass = urgency === "urgent" ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                : urgency === "soon" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                : "bg-black/10 dark:bg-white/10";
               return (
                 <li key={e.id}>
-                  <button type="button" onClick={() => { selectDay(e.event_date); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex w-full items-center gap-3 rounded-2xl bg-black/5 p-3 text-right active:opacity-80 dark:bg-white/5">
+                  <button type="button" onClick={() => { selectDay(e.event_date); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="flex w-full items-center gap-3 rounded-2xl bg-black/5 p-3 text-right transition-all active:scale-95 dark:bg-white/5">
                     <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
                     <div className="min-w-0 flex-1">
-                      <p className={`truncate text-sm font-bold ${e.is_done ? "line-through opacity-50" : ""}`}>{e.title}</p>
+                      <p className="truncate text-sm font-bold">{e.title}</p>
                       <p className="mt-0.5 truncate text-[11px] opacity-70">
                         {EVENT_TYPE_LABELS[e.event_type]}{e.course_name ? ` · ${e.course_name}` : ""}{e.event_time ? ` · ${e.event_time}` : ""}{` · ${e.date_label}`}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-bold dark:bg-white/10">{countdownLabel(e.event_date)}</span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${urgencyClass}`}>
+                      {countdownLabel(e.event_date)}
+                    </span>
                   </button>
                 </li>
               );
             })}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ── Floating add button (FAB) ── */}
+      {!form && (
+        <button type="button" onClick={openCreate}
+          className="fixed bottom-24 left-1/2 z-20 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/40 transition-all active:scale-90"
+          aria-label="افزودن رویداد">
+          <PlusIcon className="h-6 w-6" />
+        </button>
+      )}
     </section>
   );
 }
 
-function SummaryCard({ label, value, dot }: { label: string; value: number; dot: string }) {
+function SummaryCard({ label, value, icon, accent }: { label: string; value: number; icon: string; accent: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl bg-black/5 p-3 dark:bg-white/5">
-      <div className="flex items-center gap-1.5">
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        <span className="text-lg font-bold leading-none">{fa(value)}</span>
-      </div>
-      <p className="text-[10px] leading-tight opacity-70">{label}</p>
+    <div className="flex flex-col items-center gap-1 rounded-2xl bg-black/5 p-2.5 text-center dark:bg-white/5">
+      <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-sm ${accent}`}>{icon}</div>
+      <span className="text-lg font-black leading-none">{fa(value)}</span>
+      <span className="text-[9px] leading-tight opacity-60">{label}</span>
     </div>
   );
 }
