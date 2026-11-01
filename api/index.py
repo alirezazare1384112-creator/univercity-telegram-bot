@@ -74,6 +74,8 @@ _LIGHT_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("users", "photo_url", "VARCHAR(512)"),
     ("university_links", "ciphertext_b64", "TEXT"),
     ("university_links", "wrapped_key_b64", "TEXT"),
+    ("calendar_events", "event_type", "VARCHAR(16) NOT NULL DEFAULT 'OTHER'"),
+    ("calendar_events", "course_id", "BIGINT"),
 )
 
 

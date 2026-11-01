@@ -171,6 +171,84 @@ export interface NoteInput {
   course_id?: number | null;
 }
 
+export type EventType =
+  | "EXAM"
+  | "QUIZ"
+  | "ASSIGNMENT"
+  | "PROJECT"
+  | "PRESENTATION"
+  | "CLASS"
+  | "TASK"
+  | "OTHER";
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  EXAM: "امتحان",
+  QUIZ: "کوییز",
+  ASSIGNMENT: "تکلیف",
+  PROJECT: "پروژه",
+  PRESENTATION: "ارائه",
+  CLASS: "کلاس",
+  TASK: "کار شخصی",
+  OTHER: "سایر",
+};
+
+export const EVENT_TYPES = Object.keys(EVENT_TYPE_LABELS) as EventType[];
+
+// Colour classes for each event type (light/dark aware)
+export const EVENT_TYPE_COLORS: Record<
+  EventType,
+  { dot: string; bg: string; text: string; border: string }
+> = {
+  EXAM: {
+    dot: "bg-red-500",
+    bg: "bg-red-500/10 dark:bg-red-500/15",
+    text: "text-red-700 dark:text-red-400",
+    border: "border-r-red-500",
+  },
+  QUIZ: {
+    dot: "bg-amber-500",
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
+    text: "text-amber-700 dark:text-amber-400",
+    border: "border-r-amber-500",
+  },
+  ASSIGNMENT: {
+    dot: "bg-emerald-500",
+    bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
+    text: "text-emerald-700 dark:text-emerald-400",
+    border: "border-r-emerald-500",
+  },
+  PROJECT: {
+    dot: "bg-teal-500",
+    bg: "bg-teal-500/10 dark:bg-teal-500/15",
+    text: "text-teal-700 dark:text-teal-400",
+    border: "border-r-teal-500",
+  },
+  PRESENTATION: {
+    dot: "bg-blue-500",
+    bg: "bg-blue-500/10 dark:bg-blue-500/15",
+    text: "text-blue-700 dark:text-blue-400",
+    border: "border-r-blue-500",
+  },
+  CLASS: {
+    dot: "bg-violet-500",
+    bg: "bg-violet-500/10 dark:bg-violet-500/15",
+    text: "text-violet-700 dark:text-violet-400",
+    border: "border-r-violet-500",
+  },
+  TASK: {
+    dot: "bg-orange-500",
+    bg: "bg-orange-500/10 dark:bg-orange-500/15",
+    text: "text-orange-700 dark:text-orange-400",
+    border: "border-r-orange-500",
+  },
+  OTHER: {
+    dot: "bg-gray-400",
+    bg: "bg-gray-400/10 dark:bg-gray-400/15",
+    text: "text-gray-600 dark:text-gray-400",
+    border: "border-r-gray-400",
+  },
+};
+
 export interface CalendarEvent {
   id: number;
   title: string;
@@ -179,6 +257,9 @@ export interface CalendarEvent {
   date_label: string;
   description: string | null;
   is_done: boolean;
+  event_type: EventType;
+  course_id: number | null;
+  course_name: string | null;
 }
 
 export interface CalendarEventInput {
@@ -187,6 +268,8 @@ export interface CalendarEventInput {
   event_time?: string | null;
   description?: string | null;
   is_done?: boolean;
+  event_type?: EventType;
+  course_id?: number | null;
 }
 
 export type RepeatType = "NONE" | "DAILY" | "WEEKLY" | "MONTHLY";

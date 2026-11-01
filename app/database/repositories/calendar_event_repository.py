@@ -48,6 +48,8 @@ class CalendarEventRepository:
         event_date,
         event_time=None,
         description: str | None = None,
+        event_type: str = "OTHER",
+        course_id: int | None = None,
     ) -> CalendarEvent:
         event = CalendarEvent(
             user_id=user_id,
@@ -55,6 +57,8 @@ class CalendarEventRepository:
             event_date=event_date,
             event_time=event_time,
             description=description or None,
+            event_type=event_type,
+            course_id=course_id,
         )
         self._session.add(event)
         await self._session.flush()

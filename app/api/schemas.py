@@ -282,6 +282,8 @@ class CalendarEventIn(BaseModel):
     event_time: time | None = None
     description: str | None = None
     is_done: bool = False
+    event_type: str = "OTHER"
+    course_id: int | None = None
 
     @field_validator("title")
     @classmethod
@@ -308,6 +310,15 @@ class CalendarEventIn(BaseModel):
         value = value.strip()
         return value or None
 
+    @field_validator("event_type")
+    @classmethod
+    def _known_type(cls, value: str) -> str:
+        from app.database.models.calendar_event import EVENT_TYPES
+
+        if value not in EVENT_TYPES:
+            raise ValueError("unknown event_type")
+        return value
+
 
 class CalendarEventOut(BaseModel):
     id: int
@@ -317,6 +328,9 @@ class CalendarEventOut(BaseModel):
     date_label: str
     description: str | None
     is_done: bool
+    event_type: str = "OTHER"
+    course_id: int | None = None
+    course_name: str | None = None
 
 
 class ReminderIn(BaseModel):
