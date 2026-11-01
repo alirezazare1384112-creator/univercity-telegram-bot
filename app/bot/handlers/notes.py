@@ -517,8 +517,44 @@ async def save_forwarded_file(update: Update, context: ContextTypes.DEFAULT_TYPE
     unreliable due to persistence round-trips — this standalone handler
     is the safety net that guarantees "forward a file → saved as note"
     always works.
+
+    BUT: if the notes wizard is active (the user pressed "➕ جزوه جدید"
+    and is in the middle of the title/file/course flow), we route to
+    on_file_received instead of saving a new note. This prevents the
+    wizard from being bypassed when the ConversationHandler state
+    doesn't persist on serverless.
     """
+    wizard = context.user_data.get("note_wizard")
+    if wizard is not None:
+        # The wizard is active but the ConversationHandler didn't match
+        # (serverless persistence issue). Handle the file as the wizard
+        # would — add it to the wizard data and advance.
+        return await on_file_received(update, context)
     return await _save_file_as_note(update, context)
+
+
+async def wizard_text_safety_net(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Safety net for text messages when the notes wizard is active.
+
+    On Vercel (serverless), ConversationHandler state may not persist
+    between requests. When the user types a title in the wizard, the
+    conversation handler may not match (state lost), and the text would
+    fall through to the fallback handler which shows the main menu —
+    making it impossible to complete the wizard.
+
+    This handler is registered in group 0 after all conversations. It
+    checks context.user_data["note_wizard"]: if the wizard is active,
+    routes the text to on_wizard_text. If not, calls the regular
+    fallback so the main menu works as before.
+    """
+    wizard = context.user_data.get("note_wizard")
+    if wizard is not None:
+        return await on_wizard_text(update, context)
+    # Wizard not active — this is a regular text message. Let the
+    # fallback handler (group 1) show the main menu.
+    from app.bot.handlers.start import fallback_text
+
+    return await fallback_text(update, context)
 
 
 async def _save_file_as_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
