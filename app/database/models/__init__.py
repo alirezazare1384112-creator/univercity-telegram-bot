@@ -4,6 +4,7 @@ Importing this package registers every model on ``Base.metadata``,
 which is what Alembic autogenerate uses to detect schema changes.
 """
 
+from app.database.models.activity import WeeklyActivity
 from app.database.models.admin import Admin
 from app.database.models.announcement import Announcement
 from app.database.models.base import Base, utcnow
@@ -32,6 +33,7 @@ __all__ = [
     "UniversityLink",
     "User",
     "UserChannel",
+    "WeeklyActivity",
     "WeeklySchedule",
     "utcnow",
 ]

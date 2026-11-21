@@ -333,6 +333,54 @@ class CalendarEventOut(BaseModel):
     course_name: str | None = None
 
 
+class WeeklyActivityIn(BaseModel):
+    title: str
+    day_of_week: int = Field(ge=1, le=7, description="1=Saturday ... 7=Friday")
+    start_time: time
+    duration_hours: float = Field(gt=0, le=24)
+    description: str | None = None
+    category: str = "OTHER"
+    is_active: bool = True
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("title is required")
+        if len(value) > 128:
+            raise ValueError("title is too long")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _empty_desc_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("category")
+    @classmethod
+    def _known_category(cls, value: str) -> str:
+        from app.database.models.activity import ACTIVITY_CATEGORIES
+
+        if value not in ACTIVITY_CATEGORIES:
+            raise ValueError("unknown category")
+        return value
+
+
+class WeeklyActivityOut(BaseModel):
+    id: int
+    title: str
+    description: str | None
+    day_of_week: int
+    start_time: str
+    duration_hours: float
+    category: str = "OTHER"
+    is_active: bool
+
+
 class ReminderIn(BaseModel):
     title: str
     local_datetime: datetime

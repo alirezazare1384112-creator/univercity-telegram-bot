@@ -23,6 +23,7 @@ from telegram.ext import Application
 
 from app.api.auth import INIT_DATA_HEADER
 from app.api.routers import (
+    activities,
     admin,
     announcements,
     calendar,
@@ -434,6 +435,7 @@ def create_api(
     api.include_router(notes.router)
     api.include_router(calendar.router)
     api.include_router(reminders.router)
+    api.include_router(activities.router)
     api.include_router(announcements.router)
     api.include_router(links.router)
     api.include_router(admin.router)

@@ -169,6 +169,18 @@ export default function DashboardPage() {
           </div>
         </Link>
         <Link
+          to="/activity-room"
+          className="flex flex-col gap-2 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 p-4 transition-all active:scale-95 dark:from-emerald-500/15 dark:to-cyan-500/15"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/20 text-lg">
+            🎯
+          </div>
+          <div>
+            <p className="text-sm font-bold">اتاق فعالیت</p>
+            <p className="text-[11px] opacity-70">برنامه هفتگی فعالیت‌ها</p>
+          </div>
+        </Link>
+        <Link
           to="/schedule"
           className="flex flex-col gap-2 rounded-2xl bg-gradient-to-br from-blue-500/10 to-cyan-500/10 p-4 transition-all active:scale-95 dark:from-blue-500/15 dark:to-cyan-500/15"
         >

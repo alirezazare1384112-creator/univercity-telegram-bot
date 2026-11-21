@@ -9,6 +9,7 @@ import { getWebApp } from "./lib/telegram";
 import ConnectPage from "./pages/ConnectPage";
 import DashboardPage from "./pages/DashboardPage";
 // Lazy: every other page ships as its own chunk, loaded on first navigation.
+const ActivityRoomPage = lazy(() => import("./pages/ActivityRoomPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
@@ -88,6 +89,7 @@ function Shell() {
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/schedule" element={<SchedulePage />} />
+              <Route path="/activity-room" element={<ActivityRoomPage />} />
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/courses/:courseId/grades" element={<GradesPage />} />
               <Route path="/grades" element={<GradesSummaryPage />} />

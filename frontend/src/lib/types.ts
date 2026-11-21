@@ -365,3 +365,119 @@ export interface LinkBookmarklet {
   title?: string;
   url?: string;
 }
+
+// --- Activity Room (weekly recurring planner) -----------------------------
+
+export type ActivityCategory =
+  | "STUDY"
+  | "SPORT"
+  | "REST"
+  | "WORK"
+  | "PERSONAL"
+  | "OTHER";
+
+export const ACTIVITY_CATEGORY_LABELS: Record<ActivityCategory, string> = {
+  STUDY: "مطالعه",
+  SPORT: "ورزش",
+  REST: "استراحت",
+  WORK: "کار",
+  PERSONAL: "شخصی",
+  OTHER: "سایر",
+};
+
+export const ACTIVITY_CATEGORIES = Object.keys(
+  ACTIVITY_CATEGORY_LABELS,
+) as ActivityCategory[];
+
+// Colour classes for each activity category (light/dark aware)
+export const ACTIVITY_CATEGORY_COLORS: Record<
+  ActivityCategory,
+  { dot: string; bg: string; text: string; border: string; ring: string }
+> = {
+  STUDY: {
+    dot: "bg-indigo-500",
+    bg: "bg-indigo-500/10 dark:bg-indigo-500/15",
+    text: "text-indigo-700 dark:text-indigo-400",
+    border: "border-r-indigo-500",
+    ring: "ring-indigo-500",
+  },
+  SPORT: {
+    dot: "bg-emerald-500",
+    bg: "bg-emerald-500/10 dark:bg-emerald-500/15",
+    text: "text-emerald-700 dark:text-emerald-400",
+    border: "border-r-emerald-500",
+    ring: "ring-emerald-500",
+  },
+  REST: {
+    dot: "bg-violet-500",
+    bg: "bg-violet-500/10 dark:bg-violet-500/15",
+    text: "text-violet-700 dark:text-violet-400",
+    border: "border-r-violet-500",
+    ring: "ring-violet-500",
+  },
+  WORK: {
+    dot: "bg-amber-500",
+    bg: "bg-amber-500/10 dark:bg-amber-500/15",
+    text: "text-amber-700 dark:text-amber-400",
+    border: "border-r-amber-500",
+    ring: "ring-amber-500",
+  },
+  PERSONAL: {
+    dot: "bg-pink-500",
+    bg: "bg-pink-500/10 dark:bg-pink-500/15",
+    text: "text-pink-700 dark:text-pink-400",
+    border: "border-r-pink-500",
+    ring: "ring-pink-500",
+  },
+  OTHER: {
+    dot: "bg-gray-400",
+    bg: "bg-gray-400/10 dark:bg-gray-400/15",
+    text: "text-gray-600 dark:text-gray-400",
+    border: "border-r-gray-400",
+    ring: "ring-gray-400",
+  },
+};
+
+// Persian weekday names. day_of_week is 1=Saturday ... 7=Friday.
+export const ACTIVITY_DAY_NAMES: string[] = [
+  "", // index 0 unused
+  "شنبه",
+  "یکشنبه",
+  "دوشنبه",
+  "سه‌شنبه",
+  "چهارشنبه",
+  "پنجشنبه",
+  "جمعه",
+];
+
+export const ACTIVITY_DAY_SHORT: string[] = [
+  "", // index 0 unused
+  "ش",
+  "ی",
+  "د",
+  "س",
+  "چ",
+  "پ",
+  "ج",
+];
+
+export interface WeeklyActivity {
+  id: number;
+  title: string;
+  description: string | null;
+  day_of_week: number; // 1..7 (Saturday..Friday)
+  start_time: string; // "HH:MM"
+  duration_hours: number; // can be fractional
+  category: ActivityCategory;
+  is_active: boolean;
+}
+
+export interface WeeklyActivityInput {
+  title: string;
+  day_of_week: number;
+  start_time: string;
+  duration_hours: number;
+  description?: string | null;
+  category?: ActivityCategory;
+  is_active?: boolean;
+}

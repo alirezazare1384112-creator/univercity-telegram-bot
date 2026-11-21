@@ -2,8 +2,8 @@ import { NavLink } from "react-router-dom";
 
 const ITEMS = [
   { to: "/", label: "خانه", icon: "🏠" },
-  { to: "/schedule", label: "برنامه", icon: "📅" },
   { to: "/calendar", label: "تقویم", icon: "📆" },
+  { to: "/activity-room", label: "فعالیت", icon: "🎯" },
   { to: "/courses", label: "دروس", icon: "📚" },
   { to: "/profile", label: "پروفایل", icon: "👤" },
 ];
