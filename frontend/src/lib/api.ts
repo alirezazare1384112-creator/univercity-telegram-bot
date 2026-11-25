@@ -23,6 +23,8 @@ import type {
   ReminderInput,
   ScheduleInfo,
   UniversityLink,
+  WeeklyActivity,
+  WeeklyActivityInput,
 } from "./types";
 import { getWebApp } from "./telegram";
 
@@ -357,6 +359,26 @@ export const api = {
   linkBookmarklet: (id: number) =>
     request<LinkBookmarklet>(`/api/links/${id}/bookmarklet`),
   updateMe: (payload: ProfileInput) => request<Me>("/api/me", jsonInit("PUT", payload)),
+  activities: () => requestCached<WeeklyActivity[]>("/api/activities"),
+  createActivity: (payload: WeeklyActivityInput) =>
+    request<WeeklyActivity>("/api/activities", jsonInit("POST", payload)).then((r) => {
+      invalidateCache("/api/activities");
+      return r;
+    }),
+  updateActivity: (id: number, payload: WeeklyActivityInput) =>
+    request<WeeklyActivity>(`/api/activities/${id}`, jsonInit("PUT", payload)).then(
+      (r) => {
+        invalidateCache("/api/activities");
+        return r;
+      },
+    ),
+  deleteActivity: (id: number) =>
+    request<{ deleted: boolean }>(`/api/activities/${id}`, { method: "DELETE" }).then(
+      (r) => {
+        invalidateCache("/api/activities");
+        return r;
+      },
+    ),
   adminStats: () => requestCached<AdminStats>("/api/admin/stats"),
   adminUsers: (limit = 50) =>
     requestCached<AdminUsers>(`/api/admin/users?limit=${limit}`),
